@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>静水拾光 · 数据舱</title>
+    <script src="shared.js"></script>
+    <script src="theme-boot.js"></script>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <div class="spotlight" id="spotlight" aria-hidden="true"></div>
+    <div class="app">
+      <section class="print-report-head" aria-hidden="true">
+        <span class="eyebrow">Focus Report</span>
+        <h1>静水拾光 · 专注数据报告</h1>
+        <p>
+          <span id="print-date">--</span>
+          <span>·</span>
+          <span id="print-range">数据范围 --</span>
+          <span>·</span>
+          <span id="print-updated">--:--</span>
+        </p>
+      </section>
+      <header class="dash-header">
+        <div class="dash-brand">
+          <span class="dash-logo" aria-hidden="true">
+            <svg viewBox="0 0 512 512" fill="none" focusable="false">
+              <path d="M372.3 337.4A142 142 0 1 1 372.3 174.6" stroke="currentColor" stroke-width="38" stroke-linecap="round"></path>
+              <circle cx="256" cy="256" r="30" fill="currentColor" fill-opacity=".55"></circle>
+            </svg>
+          </span>
+          <div class="dash-brand-copy">
+            <span class="eyebrow">Focus Observatory</span>
+            <h1>静水拾光 <em>· 数据舱</em></h1>
+            <p>把每一次专注，变成看得见的轨迹</p>
+          </div>
+        </div>
+        <div class="dash-header-right">
+          <div class="range-switch" id="range-switch" role="group" aria-label="时间范围">
+            <span class="range-glider" id="range-glider" aria-hidden="true"></span>
+            <button class="range-btn" type="button" data-range="7" aria-pressed="false">近7天</button>
+            <button class="range-btn active" type="button" data-range="30" aria-pressed="true">近30天</button>
+            <button class="range-btn" type="button" data-range="year" aria-pressed="false">今年</button>
+            <button class="range-btn" type="button" data-range="all" aria-pressed="false">全部</button>
+          </div>
+          <p class="dash-updated">数据更新于 <span id="updated-at">--:--</span></p>
+        </div>
+      </header>
+
+      <main class="dash-grid">
+        <section class="stats-row" aria-label="核心数据">
+          <article class="glass-card stat-card tilt" data-stat="total">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="8.2"></circle>
+                  <path d="M12 7.4V12l3.2 2"></path>
+                </svg>
+              </span>
+              <span class="stat-label">累计专注时长</span>
+            </div>
+            <div class="stat-main">
+              <strong class="stat-value" id="stat-total-value">0</strong>
+              <span class="stat-unit" id="stat-total-unit">小时</span>
+            </div>
+            <div class="stat-foot" id="stat-total-foot">所选范围 · 0 次记录</div>
+            <div class="stat-spark" id="stat-total-spark" aria-hidden="true"></div>
+          </article>
+
+          <article class="glass-card stat-card tilt" data-stat="count">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 4.5h14v15H5z"></path>
+                  <path d="m8.6 12 2.2 2.2 4.6-4.8"></path>
+                </svg>
+              </span>
+              <span class="stat-label">累计次数</span>
+            </div>
+            <div class="stat-main">
+              <strong class="stat-value" id="stat-count-value">0</strong>
+              <span class="stat-unit" id="stat-count-unit">次</span>
+            </div>
+            <div class="stat-foot" id="stat-count-foot">所选范围 · 0 分钟</div>
+            <div class="stat-spark" id="stat-count-spark" aria-hidden="true"></div>
+          </article>
+
+          <article class="glass-card stat-card tilt" data-stat="average">
+            <div class="stat-top">
+              <span class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4.5 19.5V13M9.5 19.5V8M14.5 19.5v-4.2M19.5 19.5V5"></path>
+                </svg>
+              </span>
+              <span class="stat-label">日均时长</span>
+            </div>
+            <div class="stat-main">
+              <strong class="stat-value" id="stat-average-value">0</strong>
+              <span class="stat-unit" id="stat-average-unit">分钟/天</span>
+            </div>
+            <div class="stat-foot" id="stat-average-foot">按所选范围自然日折算</div>
+            <div class="stat-spark" id="stat-average-spark" aria-hidden="true"></div>
+          </article>
+
+          <article class="glass-card stat-card tilt" data-stat="streak">
+            <div class="stat-top">
+              <span class="stat-icon is-flame" aria-hidden="true">🔥</span>
+              <span class="stat-label">连续打卡天数</span>
+            </div>
+            <div class="stat-main">
+              <strong class="stat-value" id="stat-streak-value">0</strong>
+              <span class="stat-unit" id="stat-streak-unit">天</span>
+            </div>
+            <div class="stat-foot" id="stat-streak-foot">保持节奏，别断在今天</div>
+            <div class="stat-spark" id="stat-streak-spark" aria-hidden="true"></div>
+          </article>
+
+          <article class="glass-card stat-card quality-card tilt" data-stat="quality">
+            <div class="quality-copy">
+              <div class="stat-top">
+                <span class="stat-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3.2 19 6v5.2c0 4.6-3 7.4-7 9.1-4-1.7-7-4.5-7-9.1V6l7-2.8z"></path>
+                    <path d="m9.2 12 1.9 1.9 3.8-4"></path>
+                  </svg>
+                </span>
+                <span class="stat-label">专注质量</span>
+              </div>
+              <p class="quality-note">完成状态的记录占总记录的比例</p>
+              <div class="stat-foot" id="stat-quality-foot">已完成 0 / 0 次</div>
+            </div>
+            <div class="quality-ring">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle class="ring-track" cx="50" cy="50" r="41"></circle>
+                <circle class="ring-value" id="quality-ring" cx="50" cy="50" r="41"></circle>
+              </svg>
+              <div class="quality-center">
+                <b id="quality-percent">0%</b>
+                <small>完成率</small>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="glass-card panel trend-panel tilt" aria-labelledby="trend-title">
+          <header class="panel-head">
+            <div>
+              <span class="eyebrow">Trend &amp; Insight</span>
+              <h2 id="trend-title">趋势与深度洞察</h2>
+              <p id="trend-sub">按天汇总所选范围的专注时长</p>
+            </div>
+            <span class="panel-chip" id="trend-chip">近30天</span>
+          </header>
+          <div class="trend-chart-shell" id="trend-shell">
+            <div class="trend-chart-body">
+              <div class="trend-axis" id="trend-axis" aria-hidden="true"></div>
+              <div class="trend-scroll" id="trend-scroll">
+                <svg id="trend-svg" role="img" aria-label="专注时长趋势折线面积图"></svg>
+              </div>
+            </div>
+            <div class="chart-tooltip" id="chart-tooltip" hidden>
+              <span class="tt-date" id="tt-date"></span>
+              <b class="tt-value" id="tt-value"></b>
+              <span class="tt-meta" id="tt-meta"></span>
+            </div>
+            <p class="chart-empty hidden" id="trend-empty">所选范围还没有专注记录，先专注一次吧。</p>
+          </div>
+          <div class="insights" id="insights">
+            <article class="insight">
+              <span class="insight-icon" aria-hidden="true">⏰</span>
+              <div>
+                <span class="insight-label">最高效时段</span>
+                <b class="insight-value" id="insight-hour">暂无</b>
+                <small id="insight-hour-note">还没有足够数据</small>
+              </div>
+            </article>
+            <article class="insight">
+              <span class="insight-icon" aria-hidden="true">🏔️</span>
+              <div>
+                <span class="insight-label">最长单次专注</span>
+                <b class="insight-value" id="insight-longest">暂无</b>
+                <small id="insight-longest-note">还没有记录</small>
+              </div>
+            </article>
+            <article class="insight">
+              <span class="insight-icon" aria-hidden="true">🎯</span>
+              <div>
+                <span class="insight-label">最常关联任务</span>
+                <b class="insight-value" id="insight-task">暂未关联</b>
+                <small id="insight-task-note">专注时选一条待办试试</small>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="glass-card panel habit-panel tilt" aria-labelledby="habit-title">
+          <header class="panel-head">
+            <div>
+              <span class="eyebrow">Habit Distribution</span>
+              <h2 id="habit-title">习惯分布</h2>
+              <p>从时段、星期与时长偏好观察节奏</p>
+            </div>
+            <span class="panel-chip" id="habit-chip">24h</span>
+          </header>
+
+          <div class="habit-block">
+            <div class="habit-block-head">
+              <h3>24 小时时段分布</h3>
+              <span>悬停柱子看分钟</span>
+            </div>
+            <div class="hour-chart" id="hour-chart" aria-label="24 小时专注分布柱状图"></div>
+          </div>
+
+          <div class="habit-split">
+            <div class="habit-block">
+              <div class="habit-block-head">
+                <h3>星期偏好</h3>
+                <span>平均分钟</span>
+              </div>
+              <div class="radar-wrap">
+                <svg id="radar-svg" role="img" aria-label="周一至周日平均专注雷达图"></svg>
+              </div>
+            </div>
+
+            <div class="habit-block">
+              <div class="habit-block-head">
+                <h3>专注时长偏好</h3>
+                <span>25 / 45 / 60</span>
+              </div>
+              <div class="pomodoro-list" id="pomodoro-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-card panel goals-panel tilt" aria-labelledby="goals-title">
+          <header class="panel-head">
+            <div>
+              <span class="eyebrow">Goals &amp; Activity</span>
+              <h2 id="goals-title">目标与活跃热力</h2>
+              <p>目标进度实时计算，点击热力图任一格联动上方趋势</p>
+            </div>
+            <span class="panel-chip">365 Days</span>
+          </header>
+
+          <div class="goals-layout">
+            <div class="goals-column">
+              <div class="goal-list" id="goal-list"></div>
+              <p class="goal-hint">目标未设置时，可在弹窗右下角「🎯 目标」里填写。</p>
+            </div>
+
+            <div class="heatmap-column">
+              <div class="heatmap-head">
+                <h3>年度活跃热力图</h3>
+                <div class="heatmap-legend" aria-hidden="true">
+                  <span>少</span>
+                  <i data-level="0"></i><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i>
+                  <span>多</span>
+                </div>
+              </div>
+              <div class="heatmap-body">
+                <div class="heatmap-weekdays" aria-hidden="true">
+                  <span></span><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span>
+                </div>
+                <div class="heatmap-main">
+                  <div class="heatmap-months" id="heatmap-months" aria-hidden="true"></div>
+                  <div class="heatmap-grid" id="heatmap-grid" aria-label="过去 365 天专注活跃热力图"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-card panel ranking-panel tilt" aria-labelledby="ranking-title">
+          <header class="panel-head">
+            <div>
+              <span class="eyebrow">Hall of Focus</span>
+              <h2 id="ranking-title">专注排行榜</h2>
+              <p>所选范围内单次专注时长 Top 5</p>
+            </div>
+            <span class="panel-chip" id="ranking-chip">Top 5</span>
+          </header>
+          <div class="ranking-grid" id="ranking-list"></div>
+          <p class="empty ranking-empty hidden" id="ranking-empty">还没有可以上榜的专注记录。</p>
+        </section>
+      </main>
+
+      <footer class="dash-footer">
+        <span>数据来自本机 · 静水拾光</span>
+        <span>交流群：1128599418</span>
+      </footer>
+    </div>
+
+    <noscript>这个数据舱需要启用 JavaScript 才能渲染。</noscript>
+    <div class="export-fab" id="export-fab" role="group" aria-label="导出数据大屏">
+      <button class="fab-btn" type="button" id="export-html">📥 导出 HTML</button>
+      <button class="fab-btn" type="button" id="export-pdf">🖨️ 导出 PDF</button>
+    </div>
+    <script src="dashboard.js"></script>
+  </body>
+</html>

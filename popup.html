@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>静水拾光</title>
+    <script src="shared.js"></script>
+    <script src="theme-boot.js"></script>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-tile">
+            <svg class="brand-mark" viewBox="0 0 512 512" fill="none" aria-hidden="true" focusable="false">
+              <path d="M372.3 337.4A142 142 0 1 1 372.3 174.6" stroke="currentColor" stroke-width="38" stroke-linecap="round"></path>
+              <circle cx="256" cy="256" r="30" fill="currentColor" fill-opacity=".55"></circle>
+            </svg>
+          </span>
+          <div class="brand-copy">
+            <div class="brand-title">
+              <h1>静水拾光</h1>
+              <span class="version" id="brand-version">v1.0.0</span>
+            </div>
+            <p>静水流深，只为值得驻留；<br>拾光成卷，且待岁月生花。</p>
+
+          </div>
+        </div>
+        <span class="status" id="status-pill">未开始</span>
+        <button class="settings-button" id="open-settings" type="button" aria-label="打开设置" aria-haspopup="dialog" aria-expanded="false" title="设置与配色">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </header>
+
+      <nav class="view-nav" id="view-nav" role="tablist" aria-label="视图">
+        <span class="nav-glider" id="nav-glider" aria-hidden="true"></span>
+        <button
+          class="view-tab active"
+          id="view-tab-focus"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="view-focus"
+          data-view="focus"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="7.5"></circle>
+            <circle cx="12" cy="12" r="2.6"></circle>
+            <path d="M12 2.2v2.4M12 19.4v2.4M2.2 12h2.4M19.4 12h2.4"></path>
+          </svg>
+          <span>专注</span>
+        </button>
+        <button
+          class="view-tab"
+          id="view-tab-todo"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="view-todo"
+          data-view="todo"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="3.5" width="16" height="17" rx="3"></rect>
+            <path d="M7.5 8h5M7.5 12h9M7.5 16h6"></path>
+            <path d="m15.5 7.8 1.2 1.2 2.3-2.6"></path>
+          </svg>
+          <span>待办</span>
+        </button>
+        <button
+          class="view-tab"
+          id="view-tab-schedule"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="view-schedule"
+          data-view="schedule"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"></rect>
+            <path d="M3.5 9.5h17M8 3v4M16 3v4"></path>
+            <path d="M8 13h3M8 16.5h6"></path>
+          </svg>
+          <span>计划</span>
+          <em id="nav-schedule-count">0</em>
+        </button>
+        <button
+          class="view-tab"
+          id="view-tab-allow"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="view-allow"
+          data-view="allow"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"></path>
+            <circle cx="19" cy="17.5" r="1.6"></circle>
+          </svg>
+          <span>白名单</span>
+          <em id="nav-allow-count">0</em>
+        </button>
+        <button
+          class="view-tab"
+          id="view-tab-history"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="view-history"
+          data-view="history"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect>
+            <path d="M7.5 3v4M16.5 3v4M3.5 9.5h17"></path>
+            <path d="M8 13h2.2M13 13h2.2M8 16.5h2.2M13 16.5h2.2"></path>
+          </svg>
+          <span>记录</span>
+        </button>
+      </nav>
+
+      <main class="views">
+        <section class="view view-focus" id="view-focus" role="tabpanel" aria-labelledby="view-tab-focus">
+          <section class="console-card">
+            <div class="console-head">
+              <span class="eyebrow">Focus Console</span>
+              <span class="console-mode" id="hero-mode">25 分钟</span>
+            </div>
+
+            <div class="mode-row" id="mode-row" role="group" aria-label="计时模式">
+              <button class="mode-chip active" data-mode="countdown" type="button" aria-pressed="true">倒计时</button>
+              <button class="mode-chip" data-mode="countup" type="button" aria-pressed="false">正计时</button>
+              <span class="mode-note" id="mode-note">25 分钟一次</span>
+            </div>
+
+            <div class="time-row">
+              <div class="time-block">
+                <span id="clock">25:00</span>
+                <small id="clock-label">准备专注</small>
+              </div>
+              <div class="action-block">
+                <button class="start-pill" id="start-button" type="button" title="开始专注">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7.2v9.6c0 .6.7 1 1.2.6l7.1-4.8c.5-.3.5-1 0-1.3L10.2 6.6c-.5-.4-1.2 0-1.2.6z"></path></svg>
+                  <span id="start-label">开始</span>
+                </button>
+                <button class="stop-pill hidden" id="stop-button" type="button" title="提前结束">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.2"></rect></svg>
+                  <span>结束</span>
+                </button>
+                <button class="stop-pill skip-pill hidden" id="skip-break" type="button" title="跳过本次休息">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.2v11.6c0 .6.6 1 1.1.7l9.2-5.8c.5-.3.5-1 0-1.3L7.6 5.5c-.5-.3-1.1.1-1.1.7z"></path><path d="M18.4 6v12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path></svg>
+                  <span>跳过休息</span>
+                </button>
+              </div>
+            </div>
+
+            <p class="timer-remaining-hint hidden" id="timer-remaining-hint"></p>
+
+            <div class="progress-track" aria-hidden="true">
+              <span class="progress-fill" id="progress-fill"></span>
+              <span class="progress-dot" id="progress-dot"></span>
+            </div>
+
+            <div class="focus-config" id="focus-config">
+              <div class="focus-config-row">
+                <div class="focus-config-field">
+                  <span class="focus-config-label">
+                    <span>总专注</span>
+                    <span
+                      class="config-tip"
+                      tabindex="0"
+                      role="img"
+                      aria-label="总专注时长：本轮累计要专注的总时间，不含休息。"
+                    >
+                      ?
+                      <span class="config-tip-bubble" role="tooltip">本轮累计要专注的总时间，不含休息。开启休息后会循环到达到这个总时长。</span>
+                    </span>
+                  </span>
+                  <span class="focus-config-input">
+                    <input
+                      id="total-focus-minutes"
+                      type="number"
+                      min="1"
+                      max="480"
+                      inputmode="numeric"
+                      aria-label="总专注分钟数"
+                    />
+                    <em>分</em>
+                  </span>
+                </div>
+                <div class="focus-config-field">
+                  <span class="focus-config-label">
+                    <span>开启休息</span>
+                    <span
+                      class="config-tip is-right"
+                      tabindex="0"
+                      role="img"
+                      aria-label="开启休息：勾选后按单次专注和休息循环；不勾选时总专注时长一次倒计时。"
+                    >
+                      ?
+                      <span class="config-tip-bubble" role="tooltip">勾选后按「单次专注 + 休息」循环；不勾选则把总专注时长一次倒计时。</span>
+                    </span>
+                  </span>
+                  <label class="focus-config-switch" aria-label="开启休息">
+                    <input id="break-enabled" type="checkbox" aria-label="开启休息" />
+                    <i class="switch"></i>
+                  </label>
+                </div>
+              </div>
+              <div class="focus-config-row" id="focus-rest-settings">
+                <div class="focus-config-field">
+                  <span class="focus-config-label">
+                    <span>单次专注</span>
+                    <span
+                      class="config-tip"
+                      tabindex="0"
+                      role="img"
+                      aria-label="单次专注时长：每一次专注的时长。"
+                    >
+                      ?
+                      <span class="config-tip-bubble" role="tooltip">每一次专注的时长；最后一次可能短于这个值，避免超过总专注。</span>
+                    </span>
+                  </span>
+                  <span class="focus-config-input">
+                    <input
+                      id="focus-minutes"
+                      type="number"
+                      min="1"
+                      max="240"
+                      inputmode="numeric"
+                      aria-label="单次专注分钟数"
+                    />
+                    <em>分</em>
+                  </span>
+                </div>
+                <div class="focus-config-field">
+                  <span class="focus-config-label">
+                    <span>休息时长</span>
+                    <span
+                      class="config-tip is-right"
+                      tabindex="0"
+                      role="img"
+                      aria-label="休息时长：两次专注之间的休息时间，可跳过。"
+                    >
+                      ?
+                      <span class="config-tip-bubble" role="tooltip">两次专注之间的休息时间；休息中可在计时器下方点「跳过休息」。</span>
+                    </span>
+                  </span>
+                  <span class="focus-config-input">
+                    <input
+                      id="break-minutes"
+                      type="number"
+                      min="0"
+                      max="60"
+                      inputmode="numeric"
+                      aria-label="休息分钟数"
+                    />
+                    <em>分</em>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="task-pick-row" id="task-pick-row">
+              <span class="row-label">关联</span>
+              <select id="task-select" aria-label="关联待办">
+                <option value="">不关联待办</option>
+              </select>
+            </div>
+
+            <div class="control-pair">
+              <label class="control-tile">
+                <span class="tile-top">
+                  <span class="tile-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 3.2 19 6v5.2c0 4.6-3 7.4-7 9.1-4-1.7-7-4.5-7-9.1V6l7-2.8z"></path>
+                      <path d="m9.2 12 1.9 1.9 3.8-4"></path>
+                    </svg>
+                  </span>
+                  <b>严格</b>
+                </span>
+                <span class="tile-bottom">
+                  <small>不可提前结束</small>
+                  <input id="strict-mode" type="checkbox" checked />
+                  <i class="switch"></i>
+                </span>
+              </label>
+
+              <div class="control-tile">
+                <span class="tile-top">
+                  <span class="tile-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M20 14.2a2.8 2.8 0 0 1-2.8 2.8H8.4L4 20.2V6.8A2.8 2.8 0 0 1 6.8 4h10.4A2.8 2.8 0 0 1 20 6.8z"></path>
+                      <path d="M8 9h8M8 12.4h5"></path>
+                    </svg>
+                  </span>
+                  <b>评论</b>
+                </span>
+                <span class="tile-bottom">
+                  <select id="comment-mode" aria-label="B 站评论区遮蔽方式">
+                    <option value="off">不遮蔽</option>
+                    <option value="focus">仅专注时</option>
+                    <option value="always">始终遮蔽</option>
+                  </select>
+                </span>
+              </div>
+            </div>
+
+            <button class="next-plan" id="next-plan" type="button">
+              <span class="next-plan-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8"></circle>
+                  <path d="M12 7.5V12l3 2"></path>
+                </svg>
+              </span>
+              <span class="next-plan-copy">
+                <b id="next-plan-title">还没有专注计划</b>
+                <small id="next-plan-sub">去计划页添加一个时间段</small>
+              </span>
+              <span class="chevron" aria-hidden="true">›</span>
+            </button>
+          </section>
+        </section>
+
+        <section class="view view-schedule hidden" id="view-schedule" role="tabpanel" aria-labelledby="view-tab-schedule">
+          <div class="schedule-head">
+            <div>
+              <span class="eyebrow">Auto Focus</span>
+              <h2>专注计划</h2>
+              <p>到点自动开始，时段结束自动恢复</p>
+            </div>
+            <span class="allow-count" id="schedule-count">0 个</span>
+          </div>
+
+          <section class="schedule-add-card">
+            <div class="schedule-add-head">
+              <b>新建计划</b>
+              <span id="schedule-duration">2 小时</span>
+            </div>
+
+            <input id="schedule-label" type="text" maxlength="24" placeholder="名称（可选，如：上午学习）" />
+
+            <div class="day-row" id="day-row" role="group" aria-label="重复日期">
+              <button class="day-btn active" data-day="1" type="button" title="周一">一</button>
+              <button class="day-btn active" data-day="2" type="button" title="周二">二</button>
+              <button class="day-btn active" data-day="3" type="button" title="周三">三</button>
+              <button class="day-btn active" data-day="4" type="button" title="周四">四</button>
+              <button class="day-btn active" data-day="5" type="button" title="周五">五</button>
+              <button class="day-btn" data-day="6" type="button" title="周六">六</button>
+              <button class="day-btn" data-day="7" type="button" title="周日">日</button>
+            </div>
+
+            <div class="time-row-inputs">
+              <label>
+                <span>开始</span>
+                <input id="schedule-start" type="time" value="09:00" />
+              </label>
+              <span class="time-dash" aria-hidden="true">—</span>
+              <label>
+                <span>结束</span>
+                <input id="schedule-end" type="time" value="11:00" />
+              </label>
+              <label class="strict-mini" title="严格模式的计划不能提前结束">
+                <input id="schedule-strict" type="checkbox" checked />
+                <i></i>
+                <span>严格</span>
+              </label>
+            </div>
+
+            <button class="schedule-add" id="add-schedule" type="button">添加计划</button>
+            <p class="schedule-hint">跨午夜的时段按开始日计算；单个计划最长 4 小时。</p>
+          </section>
+
+          <div class="schedule-list" id="schedule-list"></div>
+          <p class="empty" id="schedule-empty">还没有计划。设置一个时间段，到点自动开始专注。</p>
+        </section>
+
+        <section class="view view-allow hidden" id="view-allow" role="tabpanel" aria-labelledby="view-tab-allow">
+          <p class="allow-lock-note hidden" id="allow-lock-note">严格模式进行中 · 倒计时结束前不能修改白名单</p>
+          <section class="allow-card">
+            <div class="allow-head">
+              <div>
+                <span class="eyebrow">Allow List</span>
+                <h2>白名单</h2>
+                <p>专注期间只放行这些内容和网站</p>
+              </div>
+              <span class="allow-count" id="allow-count">0 项</span>
+            </div>
+
+            <div class="tabs" role="tablist">
+              <button class="tab active" data-tab="creators" type="button">UP 主</button>
+              <button class="tab" data-tab="courses" type="button">合集 / 课程</button>
+              <button class="tab" data-tab="sites" type="button">其他网站</button>
+            </div>
+
+            <div class="tab-panel" id="panel-creators">
+              <div class="add-card">
+                <div class="form-grid creator-form">
+                  <input id="creator-input" type="text" inputmode="numeric" placeholder="UID 或空间链接" />
+                  <input id="creator-name" type="text" maxlength="40" placeholder="备注名（可选）" />
+                  <button class="add" id="add-creator" type="button">添加</button>
+                </div>
+                <button class="current-page" id="add-current" type="button">＋ 从当前 B 站页面添加 UP 主</button>
+              </div>
+              <div class="items" id="creator-list"></div>
+              <p class="empty" id="creator-empty">还没有允许的 UP 主</p>
+            </div>
+
+            <div class="tab-panel hidden" id="panel-courses">
+              <div class="add-card">
+                <div class="form-grid course-form">
+                  <input id="course-input" type="url" placeholder="课程或视频链接，末尾 * 可放行路径" />
+                  <input id="course-label" type="text" maxlength="60" placeholder="名称（可选）" />
+                  <button class="add" id="add-course" type="button">添加</button>
+                </div>
+                <button class="current-page" id="add-current-group" type="button">＋ 添加当前合集 / 整门课程</button>
+                <p class="panel-tip">合集内任一视频、课程任一课时，或“系列”详情页都可整组放行</p>
+              </div>
+              <div class="items" id="course-list"></div>
+              <p class="empty" id="course-empty">还没有允许的合集、课程或视频</p>
+            </div>
+
+            <div class="tab-panel hidden" id="panel-sites">
+              <div class="add-card">
+                <div class="form-grid site-form">
+                  <input id="site-input" type="text" placeholder="域名或网址，如 example.com" />
+                  <input id="site-label" type="text" maxlength="60" placeholder="备注名（可选）" />
+                  <button class="add" id="add-site" type="button">添加</button>
+                </div>
+                <button class="current-page" id="add-current-site" type="button">＋ 添加当前网站</button>
+                <p class="panel-tip">按整个域名放行，同时包含它的子域名</p>
+              </div>
+              <div class="items" id="site-list"></div>
+              <p class="empty" id="site-empty">还没有允许的站外网站</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="view view-history hidden" id="view-history" role="tabpanel" aria-labelledby="view-tab-history">
+          <div class="history-head">
+            <div>
+              <span class="eyebrow">Focus History</span>
+              <h2>专注记录</h2>
+              <p>按本地日期汇总，点击某天查看明细</p>
+            </div>
+            <div class="history-head-actions">
+              <button class="detail-data-btn" id="open-dashboard" type="button" title="打开 3D 交互式数据看板">
+                📊 详细数据
+              </button>
+              <span class="history-total" id="history-month-total">0 分钟</span>
+            </div>
+          </div>
+
+          <section class="calendar-card">
+            <div class="calendar-head">
+              <button class="calendar-nav" id="calendar-prev" type="button" aria-label="上个月">‹</button>
+              <b class="calendar-title" id="calendar-title">本月</b>
+              <button class="calendar-nav" id="calendar-next" type="button" aria-label="下个月">›</button>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+            </div>
+            <div class="calendar-grid" id="calendar-grid" aria-label="专注日历"></div>
+          </section>
+
+          <section class="history-day">
+            <div class="history-day-head">
+              <b id="history-day-title">今天</b>
+              <span id="history-day-total">0 分钟</span>
+            </div>
+            <div class="history-list" id="history-list"></div>
+            <p class="empty history-empty" id="history-empty">这天还没有专注记录。</p>
+          </section>
+        </section>
+
+        <section class="view view-todo hidden" id="view-todo" role="tabpanel" aria-labelledby="view-tab-todo">
+          <div class="todo-head">
+            <div>
+              <span class="eyebrow">Tasks</span>
+              <h2>待办</h2>
+              <p>每日 / 每周 / 单次 / 不限时</p>
+            </div>
+            <div class="todo-head-actions">
+              <span class="todo-count" id="todo-count">0 条</span>
+              <button class="todo-completed-toggle" id="todo-completed-toggle" type="button">
+                已完成 <em id="todo-completed-count">0</em>
+              </button>
+            </div>
+          </div>
+
+          <section class="todo-add-card" id="todo-add-card">
+            <input id="todo-title" type="text" maxlength="80" placeholder="要做什么？" aria-label="待办标题" />
+            <div class="todo-type-row" id="todo-type-row" role="group" aria-label="待办类型">
+              <button class="todo-type active" data-todo-type="daily" type="button" aria-pressed="true">每日</button>
+              <button class="todo-type" data-todo-type="weekly" type="button" aria-pressed="false">每周</button>
+              <button class="todo-type" data-todo-type="once" type="button" aria-pressed="false">单次</button>
+              <button class="todo-type" data-todo-type="unlimited" type="button" aria-pressed="false">不限时</button>
+            </div>
+            <div class="todo-date-row">
+              <label class="todo-date-field hidden" id="todo-due-field">
+                <span>日期</span>
+                <input id="todo-due-date" type="date" aria-label="单次待办日期" />
+              </label>
+              <label class="todo-date-field">
+                <span>截止</span>
+                <input id="todo-deadline" type="date" aria-label="截止日期，可选" />
+              </label>
+            </div>
+            <div class="todo-remind-row">
+              <label class="todo-remind-toggle">
+                <input id="todo-remind" type="checkbox" />
+                <i></i>
+                <span>提醒</span>
+              </label>
+              <input id="todo-remind-time" type="time" value="09:00" aria-label="提醒时间" disabled />
+              <select id="todo-remind-day" class="hidden" aria-label="每周提醒日" disabled>
+                <option value="1">周一</option>
+                <option value="2">周二</option>
+                <option value="3">周三</option>
+                <option value="4">周四</option>
+                <option value="5">周五</option>
+                <option value="6">周六</option>
+                <option value="7">周日</option>
+              </select>
+            </div>
+            <button class="todo-add" id="todo-add" type="button">添加待办</button>
+            <p class="todo-add-hint" id="todo-add-hint">每日 / 每周完成后按周期自动重置；单次必须选日期。</p>
+          </section>
+
+          <div class="todo-list" id="todo-list"></div>
+          <p class="empty" id="todo-empty">还没有待办。先加一条今天要做的事。</p>
+
+          <section class="todo-completed hidden" id="todo-completed">
+            <div class="todo-completed-head">
+              <button class="todo-back" id="todo-back" type="button">‹ 返回待办</button>
+              <b>已完成 / 已舍弃</b>
+            </div>
+            <div class="todo-completed-list" id="todo-completed-list"></div>
+            <p class="empty" id="todo-completed-empty">还没有完成或舍弃的待办。</p>
+          </section>
+        </section>
+      </main>
+
+      <footer class="focus-footer">
+        <p class="focus-total" id="focus-total-text" aria-live="polite">累计专注 0 小时 | 本月专注 0 小时</p>
+        <div class="fab-row">
+          <button
+            class="goal-fab poster-fab"
+            id="poster-open"
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="poster-layer"
+            title="生成专注海报"
+          >
+            <span aria-hidden="true">📸</span>
+            <span>海报</span>
+          </button>
+          <button
+            class="goal-fab"
+            id="goal-open"
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="goal-layer"
+            title="目标与成就"
+          >
+            <span aria-hidden="true">🎯</span>
+            <span>目标</span>
+          </button>
+        </div>
+      </footer>
+    </div>
+
+    <div class="settings-layer hidden" id="settings-layer" aria-hidden="true">
+      <div class="settings-backdrop" id="settings-backdrop"></div>
+      <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <span class="sheet-grabber" aria-hidden="true"></span>
+        <header class="settings-head">
+          <div>
+            <span class="eyebrow">Preferences</span>
+            <h2 id="settings-title">设置</h2>
+            <p>外观与偏好，只保存在本机</p>
+          </div>
+          <button class="sheet-close" id="close-settings" type="button" aria-label="关闭设置">×</button>
+        </header>
+        <div class="settings-body">
+          <section class="setting-section">
+            <div class="setting-label">
+              <h3>休息选项</h3>
+              <span>时长已移到专注页倒计时下方</span>
+            </div>
+            <label class="setting-row timer-toggle-row">
+              <span>
+                <b>休息结束提醒</b>
+                <small>休息结束后在面板中确认</small>
+              </span>
+              <input type="checkbox" id="break-end-popup" />
+              <i></i>
+            </label>
+            <label class="setting-row timer-toggle-row">
+              <span>
+                <b>可跳过休息</b>
+                <small>休息中显示「跳过休息」</small>
+              </span>
+              <input type="checkbox" id="break-skippable" />
+              <i></i>
+            </label>
+          </section>
+
+          <section class="setting-section">
+            <div class="setting-label">
+              <h3>配色主题</h3>
+              <span>点击立即生效</span>
+              <button class="text-button" id="reset-theme" type="button">恢复默认</button>
+            </div>
+            <div class="theme-grid" id="theme-grid"></div>
+          </section>
+
+          <section class="setting-section">
+            <div class="setting-label">
+              <h3>计时器样式</h3>
+              <span>专注页显示方式</span>
+            </div>
+            <div class="timer-style-grid" id="timer-style-grid" role="group" aria-label="计时器样式">
+              <button class="timer-style-card active" data-timer-style="console" type="button" aria-pressed="true">
+                <span class="timer-style-preview" aria-hidden="true"></span>
+                <b>控制台</b>
+                <small>大号数字与进度条</small>
+              </button>
+              <button class="timer-style-card" data-timer-style="minimal" type="button" aria-pressed="false">
+                <span class="timer-style-preview" aria-hidden="true"></span>
+                <b>极简</b>
+                <small>更轻的留白</small>
+              </button>
+              <button class="timer-style-card" data-timer-style="ring" type="button" aria-pressed="false">
+                <span class="timer-style-preview" aria-hidden="true"></span>
+                <b>圆环</b>
+                <small>剩余进度成环</small>
+              </button>
+              <button class="timer-style-card" data-timer-style="digital" type="button" aria-pressed="false">
+                <span class="timer-style-preview" aria-hidden="true"></span>
+                <b>数字</b>
+                <small>等宽字体读数</small>
+              </button>
+            </div>
+          </section>
+
+          <section class="setting-section">
+            <div class="setting-label">
+              <h3>动效</h3>
+              <span>界面偏好</span>
+            </div>
+            <label class="setting-row">
+              <span>
+                <b>减少动效</b>
+                <small>关闭面板切换与悬停动画</small>
+              </span>
+              <input type="checkbox" id="motion-toggle" />
+              <i></i>
+            </label>
+          </section>
+
+          <section class="setting-section">
+            <div class="setting-label">
+              <h3>数据备份</h3>
+              <span>仅本机，JSON 文件</span>
+            </div>
+            <div class="backup-actions">
+              <button class="backup-action" id="export-data" type="button">
+                <b>导出当前数据</b>
+                <small>下载备份文件</small>
+              </button>
+              <button class="backup-action" id="import-data" type="button">
+                <b>导入备份数据</b>
+                <small>覆盖并刷新</small>
+              </button>
+            </div>
+            <p class="backup-hint">导入会覆盖当前全部数据，建议先导出备份。</p>
+          </section>
+
+          <section class="setting-section">
+            <div class="setting-label">
+              <h3>关于</h3>
+            </div>
+            <div class="about-row">
+              <span class="about-mark">
+                <svg class="about-logo" viewBox="0 0 512 512" fill="none" aria-hidden="true" focusable="false">
+                  <path d="M372.3 337.4A142 142 0 1 1 372.3 174.6" stroke="currentColor" stroke-width="38" stroke-linecap="round"></path>
+                  <circle cx="256" cy="256" r="30" fill="currentColor" fill-opacity=".55"></circle>
+                </svg>
+              </span>
+              <div>
+                <b>静水拾光</b>
+                <small>版本 <span id="app-version">1.0.0</span></small>
+                <small>白名单、计划与计时仅保存在本机</small>
+              </div>
+              <span class="about-badge">本地运行</span>
+            </div>
+
+            <div class="about-contact">
+              <div class="contact-links">
+                <a href="https://space.bilibili.com/1981155364" target="_blank" rel="noopener noreferrer">作者：B站 @TianXuanStar</a>
+                <a href="mailto:TianXuanStar@outlook.com">联系邮箱：TianXuanStar@outlook.com</a>
+                <span id="copy-qq-btn" style="cursor: pointer;" title="点击一键复制群号">交流群：1128599418 (点击复制)</span>
+              </div>
+
+              <button id="open-sponsor-btn" class="sponsor-btn" type="button">☕ 赞助开发者</button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <div class="break-layer hidden" id="break-layer" aria-hidden="true">
+      <div class="break-backdrop"></div>
+      <section class="break-card" role="dialog" aria-modal="true" aria-labelledby="break-title">
+        <span class="break-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8"></circle>
+            <path d="M12 7.5V12l3 2"></path>
+          </svg>
+        </span>
+        <span class="eyebrow">Break Finished</span>
+        <h2 id="break-title">休息结束</h2>
+        <p id="break-copy">上一段专注完成了。准备好就开始下一段。</p>
+        <div class="break-actions">
+          <button class="break-primary" id="break-continue" type="button">继续专注</button>
+          <button class="break-secondary" id="break-stop" type="button">结束本次</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <div class="goal-layer hidden" id="goal-layer" aria-hidden="true">
+      <section class="goal-panel" role="dialog" aria-modal="true" aria-labelledby="goal-title">
+        <header class="goal-head">
+          <div>
+            <span class="eyebrow">Goals &amp; Wishes</span>
+            <h2 id="goal-title">目标与成就</h2>
+            <p>按开始时间统计，目标只保存在本机</p>
+          </div>
+          <button class="goal-close" id="goal-close" type="button" aria-label="关闭目标面板">×</button>
+        </header>
+        <div class="goal-body" id="goal-body">
+          <section class="goal-stats" id="goal-stats" aria-label="专注目标"></section>
+
+          <section class="wish-section">
+            <div class="wish-head">
+              <h3>进行中愿望</h3>
+              <span id="wish-active-count">0 个</span>
+            </div>
+            <div class="wish-add-row">
+              <input
+                id="wish-input"
+                type="text"
+                maxlength="120"
+                placeholder="写下想完成的事…"
+                aria-label="愿望内容"
+              />
+              <button class="wish-add" id="wish-add" type="button">添加</button>
+            </div>
+            <div class="wish-list" id="wish-active"></div>
+            <p class="wish-empty" id="wish-active-empty">还没有进行中的愿望。</p>
+          </section>
+
+          <section class="wish-section wish-honor">
+            <div class="wish-head">
+              <h3>已还愿荣誉墙</h3>
+              <span id="wish-honored-count">0 个</span>
+            </div>
+            <div class="wish-honor-list" id="wish-honored"></div>
+            <p class="wish-empty" id="wish-honored-empty">还愿后会在这里留下纪念。</p>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <div class="poster-layer hidden" id="poster-layer" aria-hidden="true">
+      <div class="poster-backdrop" id="poster-backdrop"></div>
+      <section class="poster-panel" role="dialog" aria-modal="true" aria-labelledby="poster-title">
+        <header class="poster-head">
+          <div>
+            <span class="eyebrow">Focus Poster</span>
+            <h2 id="poster-title">专注海报</h2>
+          </div>
+          <button class="poster-close" id="poster-close" type="button" aria-label="关闭海报面板">×</button>
+        </header>
+        <p class="poster-hint">按本地时间统计，生成 1080 × 1440 PNG</p>
+        <div class="poster-actions" id="poster-actions">
+          <button type="button" data-poster-period="day">生成今日专注海报</button>
+          <button type="button" data-poster-period="month">生成本月专注海报</button>
+          <button type="button" data-poster-period="year">生成今年专注海报</button>
+          <button type="button" data-poster-period="total">生成总专注海报</button>
+        </div>
+      </section>
+    </div>
+
+    
+      <!-- 赞助大弹窗 -->
+    <div id="sponsor-modal" class="sponsor-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sponsor-title" aria-hidden="true">
+      <div class="sponsor-content">
+        <h2 id="sponsor-title">☕ 感谢支持</h2>
+        <p class="sponsor-desc">如果这个插件帮到了你，可以请开发者喝杯咖啡</p>
+
+        <img src="icons/wechat-pay.png" alt="微信赞赏码" class="sponsor-qr">
+        <p class="sponsor-note">微信扫码赞赏</p>
+
+        <button id="close-sponsor-btn" class="close-sponsor-btn" type="button">关闭</button>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,96 @@
+html.bf-guard-pending body > :not(#bf-guard-host),
+html.bf-guard-blocked body > :not(#bf-guard-host) {
+  visibility: hidden !important;
+}
+
+#bf-guard-host {
+  visibility: visible !important;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  display: block !important;
+}
+
+html.bf-comment-mask-active [data-bf-comment-hidden="true"] {
+  display: none !important;
+}
+
+#bf-comment-mask {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px 12px !important;
+  width: 100% !important;
+  margin: 24px 0 !important;
+  padding: 16px 20px !important;
+  border: 1px solid var(--bf-comment-border, #eadfd8) !important;
+  border-left: 3px solid var(--bf-accent, #3f8f78) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(
+    135deg,
+    var(--bf-comment-bg-a, #fffaf6),
+    var(--bf-comment-bg-b, #f6eee8)
+  ) !important;
+  color: var(--bf-comment-note, #776960) !important;
+  text-align: left !important;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif !important;
+}
+
+#bf-comment-mask strong {
+  color: var(--bf-comment-title, #3e3733) !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+}
+
+#bf-comment-mask span {
+  margin-left: auto !important;
+  color: var(--bf-comment-note, #9a8b82) !important;
+  font-size: 10.5px !important;
+  line-height: 1.5 !important;
+}
+
+/* Batch 1: the guard logo follows the active accent. The custom property is
+   inherited into the overlay shadow root, where .tomato uses it. */
+#bf-guard-host {
+  --bf-logo-accent: var(--bf-accent, #c9a86a);
+}
+
+/* Context-menu allowlist toast. Appended only; sits on <html> so a blocked
+   page (which hides body children) cannot swallow it. */
+#bf-allowlist-toast {
+  position: fixed !important;
+  left: 50% !important;
+  bottom: 32px !important;
+  z-index: 2147483647 !important;
+  box-sizing: border-box !important;
+  max-width: min(420px, calc(100vw - 32px)) !important;
+  margin: 0 !important;
+  padding: 12px 20px !important;
+  border: 1px solid rgba(201, 168, 106, 0.55) !important;
+  border-radius: 12px !important;
+  background: #191c23 !important;
+  color: #f3eee4 !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38) !important;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  line-height: 1.5 !important;
+  text-align: left !important;
+  letter-spacing: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateX(-50%) translateY(10px) !important;
+  transition: opacity 0.18s ease, transform 0.18s ease !important;
+}
+
+#bf-allowlist-toast[data-show="true"] {
+  opacity: 1 !important;
+  transform: translateX(-50%) translateY(0) !important;
+}
+
+#bf-allowlist-toast[data-tone="error"] {
+  border-color: rgba(220, 128, 115, 0.7) !important;
+  background: #3a1f1f !important;
+  color: #ffe9e5 !important;
+}
