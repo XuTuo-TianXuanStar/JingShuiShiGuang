@@ -6,21 +6,32 @@
     mode: "countdown",
     phase: "focus",
     endAt: 0,
-    strict: true,
+    strict: false,
     startedAt: 0,
     phaseStartedAt: 0,
-    durationMinutes: 25,
-    focusMinutes: 25,
-    totalFocusMinutes: 120,
+    durationMinutes: 20,
+    focusMinutes: 20,
+    totalFocusMinutes: 45,
     breakMinutes: 5,
     sessionFocusMs: 0,
     cycles: 0,
     sessionId: "",
     taskId: "",
+    // Batch 31: plan that owns this session ("" for a manual start). Kept on
+    // the state so the final focusSessions row can carry the same id.
+    scheduleId: "",
+    // Batch 32: exact window remainder (ms) captured when a pending plan is
+    // confirmed, so the record does not depend on whole-minute rounding.
+    windowRemainingMs: 0,
     breakEndPopup: true,
     breakSkippable: true,
     commentMode: "off",
-    auto: false
+    auto: false,
+    // Batch 30: a scheduled plan first parks as "pending". The guard is armed
+    // (active) but nothing is counting or recorded until the user confirms.
+    pendingPlan: false,
+    pendingPlanId: "",
+    scheduleWindowEndAt: 0
   });
 
   const DEFAULT_ALLOWLIST = Object.freeze({
@@ -30,10 +41,19 @@
     sites: []
   });
 
+  // Batch 24: every purification switch owns its own trigger. `active` is the
+  // switch itself, `trigger` is when it applies ("focus" = focus phase only,
+  // "always" = every B站 page). The batch 21 global `pureModeTrigger` is retired.
+  const DEFAULT_PURE_FEATURE = Object.freeze({ active: false, trigger: "focus" });
+
   const DEFAULT_APPEARANCE = Object.freeze({
     theme: "noir",
     timerStyle: "console",
-    reducedMotion: false
+    reducedMotion: false,
+    hideComments: DEFAULT_PURE_FEATURE,
+    hideRecommend: DEFAULT_PURE_FEATURE,
+    hideAds: DEFAULT_PURE_FEATURE,
+    hideNavbar: DEFAULT_PURE_FEATURE
   });
 
   const DEFAULT_SCHEDULES = Object.freeze([]);
@@ -44,8 +64,8 @@
 
   const DEFAULT_TIMER_CONFIG = Object.freeze({
     mode: "countdown",
-    totalFocusMinutes: 120,
-    focusMinutes: 25,
+    totalFocusMinutes: 45,
+    focusMinutes: 20,
     breakMinutes: 5,
     breakEndPopup: true,
     breakSkippable: true
@@ -230,14 +250,22 @@
     const rawPhase =
       source.phase === "break" || source.phase === "breakEnded" ? source.phase : "focus";
     const phase = mode === "countup" ? "focus" : rawPhase;
-    const endAt = mode === "countup" || phase === "breakEnded" ? 0 : Number(source.endAt) || 0;
-    const startedAt = Number(source.startedAt) || 0;
-    const phaseStartedAt = Number(source.phaseStartedAt) || startedAt;
+    // Batch 30: a plan that reached its start time is parked as "pending": the
+    // guard is armed, but no session is running yet. Such a state must never
+    // look like a started session — startedAt / phaseStartedAt / endAt /
+    // sessionId / sessionFocusMs all stay empty so no record can be produced.
+    const pendingPlan = Boolean(source.active) && source.pendingPlan === true;
+    const endAt = pendingPlan
+      ? 0
+      : mode === "countup" || phase === "breakEnded"
+        ? 0
+        : Number(source.endAt) || 0;
+    const startedAt = pendingPlan ? 0 : Number(source.startedAt) || 0;
+    const phaseStartedAt = pendingPlan ? 0 : Number(source.phaseStartedAt) || startedAt;
     const durationMinutes = Number(source.durationMinutes);
-    const duration =
-      Number.isFinite(durationMinutes) && durationMinutes >= 1 && durationMinutes <= 240
-        ? durationMinutes
-        : 25;
+    const hasDuration =
+      Number.isFinite(durationMinutes) && durationMinutes >= 1 && durationMinutes <= 240;
+    const duration = hasDuration ? durationMinutes : 20;
     const focusNumber = Number(source.focusMinutes);
     const focusCandidate =
       Number.isFinite(focusNumber) && focusNumber >= 1 && focusNumber <= 240 ? focusNumber : duration;
@@ -245,17 +273,18 @@
     const totalFocusMinutes =
       Number.isFinite(totalNumber) && totalNumber >= 1 && totalNumber <= 480
         ? totalNumber
-        : source.focusMinutes != null
+        : source.focusMinutes != null || hasDuration
           ? focusCandidate
-          : duration;
+          : 45;
     const focusMinutes = Math.min(focusCandidate, totalFocusMinutes);
     const breakNumber = Number(source.breakMinutes);
     const breakMinutes =
       Number.isFinite(breakNumber) && breakNumber >= 0 && breakNumber <= 60 ? breakNumber : 0;
-    const sessionFocusMs = Math.max(0, Number(source.sessionFocusMs) || 0);
+    const sessionFocusMs = pendingPlan ? 0 : Math.max(0, Number(source.sessionFocusMs) || 0);
     const cycles = Math.max(0, Math.floor(Number(source.cycles) || 0));
-    const sessionId =
-      String(source.sessionId || "").slice(0, 64) || (startedAt ? `legacy-${startedAt}` : "");
+    const sessionId = pendingPlan
+      ? ""
+      : String(source.sessionId || "").slice(0, 64) || (startedAt ? `legacy-${startedAt}` : "");
     const breakEndedAt = Math.max(0, Number(source.breakEndedAt) || 0);
     const breakNotifiedAt = Math.max(0, Number(source.breakNotifiedAt) || 0);
     const endedAt = Math.max(0, Number(source.endedAt) || 0);
@@ -265,11 +294,11 @@
     return {
       active:
         Boolean(source.active) &&
-        (mode === "countup" || phase === "breakEnded" || endAt > 0),
+        (pendingPlan || mode === "countup" || phase === "breakEnded" || endAt > 0),
       mode,
       phase,
       endAt,
-      strict: source.strict !== false && mode !== "countup",
+      strict: source.strict === true && mode !== "countup",
       startedAt,
       phaseStartedAt,
       durationMinutes: duration,
@@ -280,6 +309,15 @@
       cycles,
       sessionId,
       taskId: String(source.taskId || "").slice(0, 64),
+      // Batch 31: the record builder reads this back after restarts, so the
+      // cleaner must not drop it.
+      scheduleId: String(source.scheduleId || "").slice(0, 64),
+      // Batch 32 (D1): exact planned-window remainder, kept through finish so
+      // buildSessionRecord can write it instead of a rounded minute count.
+      windowRemainingMs: Math.min(
+        480 * 60000,
+        Math.max(0, Math.round(Number(source.windowRemainingMs) || 0))
+      ),
       breakEndPopup: source.breakEndPopup !== false,
       breakSkippable: source.breakSkippable !== false,
       breakEndedAt: phase === "breakEnded" ? breakEndedAt : 0,
@@ -287,7 +325,12 @@
       endedAt,
       endReason,
       commentMode: cleanCommentMode(source.commentMode),
-      auto: Boolean(source.auto)
+      auto: Boolean(source.auto),
+      pendingPlan,
+      pendingPlanId: pendingPlan ? String(source.pendingPlanId || "").slice(0, 64) : "",
+      scheduleWindowEndAt: pendingPlan
+        ? Math.max(0, Number(source.scheduleWindowEndAt) || 0)
+        : 0
     };
   }
 
@@ -295,12 +338,37 @@
     return value === "focus" || value === "always" ? value : "off";
   }
 
+  // Batch 24: the old global `pureModeTrigger` is gone; each switch carries a
+  // trigger. Invalid values fall back to the conservative "focus".
+  function cleanPureTrigger(value) {
+    return value === "always" ? "always" : "focus";
+  }
+
+  // Batch 24: switches are objects now. Old data stored a bare boolean, so
+  // `true` becomes { active: true, trigger: "focus" } exactly once at read time.
+  function cleanPureFeature(value) {
+    if (value === true) return { active: true, trigger: "focus" };
+    const source = value && typeof value === "object" ? value : {};
+    return { active: source.active === true, trigger: cleanPureTrigger(source.trigger) };
+  }
+
   function cleanAppearance(value) {
     const source = value && typeof value === "object" ? value : {};
+    // Batch 19: the single `commentMode` switch is retired in favour of three
+    // independent switches. Legacy `commentMode: "always"` meant "clean
+    // everything", so migrate it to all three switches at read time.
+    const legacyPure = source.commentMode === "always";
+    const hideComments = cleanPureFeature(source.hideComments);
+    const hideRecommend = cleanPureFeature(source.hideRecommend);
+    const hideAds = cleanPureFeature(source.hideAds);
     return {
       theme: cleanThemeId(source.theme),
       timerStyle: TIMER_STYLES.includes(source.timerStyle) ? source.timerStyle : "console",
-      reducedMotion: source.reducedMotion === true
+      reducedMotion: source.reducedMotion === true,
+      hideComments: legacyPure ? { active: true, trigger: "focus" } : hideComments,
+      hideRecommend: legacyPure ? { active: true, trigger: "focus" } : hideRecommend,
+      hideAds: legacyPure ? { active: true, trigger: "focus" } : hideAds,
+      hideNavbar: cleanPureFeature(source.hideNavbar)
     };
   }
 
@@ -313,12 +381,12 @@
     const totalFocusMinutes =
       Number.isFinite(totalNumber) && totalNumber >= 1 && totalNumber <= 480
         ? Math.round(totalNumber)
-        : 120;
+        : 45;
     const focusNumber = Number(source.focusMinutes);
     let focusMinutes =
       Number.isFinite(focusNumber) && focusNumber >= 1 && focusNumber <= 240
         ? Math.round(focusNumber)
-        : 25;
+        : 20;
     focusMinutes = Math.min(focusMinutes, totalFocusMinutes);
     const breakNumber = Number(source.breakMinutes);
     const breakMinutes =
@@ -379,6 +447,12 @@
           ? Math.min(480, Math.max(0, Math.round(plannedNumber)))
           : 0;
     const cycles = Math.min(9999, Math.max(0, Math.floor(Number(value.cycles) || 0)));
+    // Batch 32 (D1): optional exact planned-window remainder. Old records do not
+    // have it and stay valid; new scheduled records carry it for accurate stats.
+    const windowRemainingMs =
+      mode === "countdown"
+        ? Math.min(480 * 60000, Math.max(0, Math.round(Number(value.windowRemainingMs) || 0)))
+        : 0;
     const taskId = String(value.taskId || "").slice(0, 64);
     const taskTitle = String(value.taskTitle || "").trim().slice(0, 80);
     const scheduleId = source === "schedule" ? String(value.scheduleId || "").slice(0, 64) : "";
@@ -400,6 +474,7 @@
       endReason,
       cycles
     };
+    if (windowRemainingMs > 0) session.windowRemainingMs = windowRemainingMs;
     if (scheduleId) session.scheduleId = scheduleId;
     return session;
   }
@@ -717,6 +792,51 @@
     return endMinutes > startMinutes ? endMinutes - startMinutes : 1440 - startMinutes + endMinutes;
   }
 
+  // 批次 33：计划时段重叠判定（纯函数，供 popup 在保存前拦截）。
+  // 把一条计划按 days 逐天展开成「星期 + 分钟区间」的片段，跨午夜
+  // （end < start）拆成两段：当日 [start, 1440) 与次日 [0, end)。
+  // 区间统一按半开 [from, to) 处理，所以 09:00–10:00 与 10:00–11:00
+  // 首尾相接不算重叠。
+  function scheduleDaySegments(schedule) {
+    if (!schedule || !Array.isArray(schedule.days)) return [];
+    const startText = cleanTime(schedule.start);
+    const endText = cleanTime(schedule.end);
+    if (!startText || !endText) return [];
+    const startMinutes = scheduleTimeToMinutes(startText);
+    const endMinutes = scheduleTimeToMinutes(endText);
+    if (!scheduleDurationMinutes(startText, endText)) return [];
+    const segments = [];
+    schedule.days.forEach((day) => {
+      if (!Number.isInteger(day) || day < 1 || day > 7) return;
+      if (endMinutes > startMinutes) {
+        segments.push({ day, from: startMinutes, to: endMinutes });
+        return;
+      }
+      segments.push({ day, from: startMinutes, to: 1440 });
+      // 周日（7）的第二段落到周一（1）。
+      segments.push({ day: (day % 7) + 1, from: 0, to: endMinutes });
+    });
+    return segments.filter((segment) => segment.to > segment.from);
+  }
+
+  function scheduleSegmentsOverlap(a, b) {
+    return a.some((left) =>
+      b.some((right) => left.day === right.day && Math.max(left.from, right.from) < Math.min(left.to, right.to))
+    );
+  }
+
+  // 返回全部重叠的计划（popup 会把这些 label 拼进弹窗文案）。
+  // `excludeId` 用于编辑场景：排除正在编辑的计划自己。
+  // 不区分 enabled —— 已暂停的计划同样参与判定。
+  function findScheduleConflicts(candidate, schedules, excludeId) {
+    if (!candidate || !Array.isArray(schedules)) return [];
+    const own = scheduleDaySegments(candidate);
+    if (!own.length) return [];
+    return schedules.filter(
+      (item) => item && item.id !== excludeId && scheduleSegmentsOverlap(own, scheduleDaySegments(item))
+    );
+  }
+
   function cleanSchedule(value) {
     if (!value || typeof value !== "object") return null;
     const id = String(value.id || "").trim();
@@ -742,7 +862,7 @@
       start,
       end,
       enabled: value.enabled !== false,
-      strict: value.strict !== false
+      strict: value.strict === true
     };
   }
 
@@ -1376,6 +1496,9 @@
     cleanTodoReminderState,
     scheduleOccursOn,
     scheduleDurationMinutes,
+    scheduleDaySegments,
+    scheduleSegmentsOverlap,
+    findScheduleConflicts,
     scheduleDaysLabel,
     formatDurationLabel,
     activeScheduleWindow,

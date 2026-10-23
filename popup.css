@@ -4164,3 +4164,638 @@ html[data-motion="reduced"] .poster-actions button {
   margin-right: 6px;
   color: var(--bf-faint);
 }
+
+/* ---------- 批次 16：主界面间距呼吸感微调（只做覆盖，不改原有规则） ---------- */
+/* 底部：顶栏与导航各让出 2px，转给页脚。专注卡片高度保持 432px 不变，
+   统计文字与悬浮按钮不再贴住卡片下沿，两枚按钮之间也留出呼吸。 */
+.topbar {
+  margin-bottom: 10px;
+}
+
+.view-nav {
+  margin-bottom: 10px;
+}
+
+.focus-footer {
+  margin-top: 8px;
+  padding-right: 126px;
+}
+
+.fab-row {
+  gap: 8px;
+}
+
+/* 控制面板内部：只在横向拉开间隙（不增加行高），给标签、输入框与双列卡片留白。
+   垂直方向仍沿用原节奏，避免计时中的剩余时间提示把卡片撑破。 */
+.focus-config-row {
+  column-gap: 8px;
+}
+
+.focus-config-field {
+  padding-left: 10px;
+  padding-right: 8px;
+}
+
+.control-pair {
+  column-gap: 10px;
+}
+
+.task-pick-row {
+  column-gap: 10px;
+}
+
+/* ---------- 批次 19：B站净化独立设置面板（仅在 popup 内使用） ---------- */
+.pure-mode-tile {
+  position: relative;
+}
+
+.pure-mode-control {
+  justify-content: space-between;
+}
+
+.pure-mode-label {
+  color: var(--bf-text-soft);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.pure-mode-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--bf-border);
+  border-radius: 6px;
+  background: var(--bf-item);
+  color: var(--bf-text-soft);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pure-mode-btn:hover,
+.pure-mode-btn:focus-visible {
+  border-color: var(--bf-accent);
+  color: var(--bf-accent-strong);
+  outline: 0;
+}
+
+/* .control-pair 原本 z-index:1，自身会形成层叠上下文，把内部小面板压到
+   .focus-config(z-index:2) 下面；抬高整块，平时两者不重叠，不会改变布局。 */
+.control-pair {
+  z-index: 3;
+}
+
+/* 小面板贴在本 tile 上沿向上展开，避免被 .console-card 的 overflow: hidden
+   裁掉；z-index 抬高到 999，盖住计时设置与关联待办的输入控件。 */
+#pure-mode-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 140px;
+  padding: 8px 9px;
+  border: 1px solid var(--bf-border);
+  border-radius: 9px;
+  background: var(--bf-bg);
+  color: var(--bf-text);
+  box-shadow: 0 12px 28px var(--bf-shadow);
+}
+
+#pure-mode-panel.hidden {
+  display: none !important;
+}
+
+.pure-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bf-text);
+  font-size: 9.5px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+/* .control-tile 的通用规则会把复选框做成透明开关，这里在小面板内恢复
+   为可见、可点击的原生复选框。 */
+#pure-mode-panel input[type="checkbox"] {
+  position: static;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  opacity: 1;
+  pointer-events: auto;
+  accent-color: var(--bf-accent);
+}
+
+/* Tooltip 需要压在计时输入框之上。 */
+.config-tip-bubble {
+  z-index: 50;
+}
+
+/* ---------- 批次 21：B站净化生效时机（仅专注时 / 始终净化） ---------- */
+.pure-mode-trigger {
+  display: flex;
+  gap: 4px;
+}
+
+.pure-mode-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 0;
+  border: 1px solid var(--bf-border);
+  border-radius: 999px;
+  background: var(--bf-item);
+  color: var(--bf-text-soft);
+  font-family: inherit;
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.pure-mode-pill:hover,
+.pure-mode-pill:focus-visible {
+  border-color: var(--bf-accent);
+  color: var(--bf-accent-strong);
+  outline: 0;
+}
+
+.pure-mode-pill[aria-pressed="true"],
+.pure-mode-pill[aria-pressed="true"]:hover,
+.pure-mode-pill[aria-pressed="true"]:focus-visible {
+  border-color: var(--bf-accent);
+  background: var(--bf-accent);
+  color: var(--bf-on-accent);
+}
+
+/* ---------- 批次 24：B站净化四行独立开关 ---------- */
+/* 原 140px 规则保留不动，这里用同选择器在末尾覆盖为 160px。 */
+#pure-mode-panel {
+  width: 160px;
+  padding: 8px 10px;
+  gap: 7px;
+}
+
+.pure-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pure-mode-row .pure-mode-option {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px;
+  font-size: 9.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* 每行右侧的小胶囊：只显示时机，点击在「专注 / 始终」之间切换。
+   覆盖上面批次 21 的 flex: 1 1 0 与上下内边距，让它保持紧凑。 */
+.pure-mode-row .pure-mode-pill {
+  flex: 0 0 auto;
+  min-width: 30px;
+  padding: 2px 7px;
+  border: 1px solid var(--bf-border);
+  border-radius: 999px;
+  background: var(--bf-item);
+  color: var(--bf-text-soft);
+  font-family: inherit;
+  font-size: 9px;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease,
+    transform 0.1s ease;
+}
+
+.pure-mode-row .pure-mode-pill:hover,
+.pure-mode-row .pure-mode-pill:focus-visible {
+  border-color: var(--bf-accent);
+  color: var(--bf-accent-strong);
+  outline: 0;
+}
+
+.pure-mode-row .pure-mode-pill[data-trigger="always"] {
+  border-color: var(--bf-accent);
+  background: var(--bf-accent);
+  color: var(--bf-on-accent);
+}
+
+.pure-mode-row .pure-mode-pill[data-trigger="always"]:hover,
+.pure-mode-row .pure-mode-pill[data-trigger="always"]:focus-visible {
+  border-color: var(--bf-accent);
+  background: var(--bf-accent);
+  color: var(--bf-on-accent);
+}
+
+.pure-mode-row .pure-mode-pill:active {
+  transform: scale(0.88);
+}
+
+/* ---------- 批次 25：净化胶囊文案改长后的宽度微调 ---------- */
+/* 「仅专注」「始终净化」比原来的「专注 / 始终」更宽；面板仍为 160px，
+   这里收紧胶囊左右内边距与复选框间距，保证四行不撑破、面板不横向溢出。 */
+.pure-mode-row .pure-mode-option {
+  gap: 5px;
+}
+
+.pure-mode-row .pure-mode-pill {
+  min-width: 0;
+  padding: 2px 5px;
+  font-size: 9px;
+}
+
+/* ---------- 批次 27：严格模式「确立严格契约」警告弹窗 ---------- */
+/* 替代原生 window.confirm。深色磨砂遮罩瞬间聚焦注意力，卡面只用主题危险色
+   做 1px 描边与图标红晕，克制不刺眼；动效只有「背景渐显 + 卡面轻微下落」，
+   不使用左右震动的 shake。z-index 1000 压在设置 / 休息 / 目标面板之上。 */
+#strict-warning-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.strict-warning-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: strict-warning-backdrop-in 0.2s ease both;
+}
+
+.strict-warning-card {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  padding: 20px 18px 16px;
+  border: 1px solid var(--bf-danger);
+  border-radius: 16px;
+  background: var(--bf-surface);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 22px 54px var(--bf-shadow);
+  text-align: center;
+  animation: strict-warning-card-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.strict-warning-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border: 1px solid color-mix(in srgb, var(--bf-danger) 30%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--bf-danger) 9%, transparent);
+  color: var(--bf-danger);
+  /* 极淡的红晕，只做到「有点分量」为止 */
+  box-shadow: 0 0 18px color-mix(in srgb, var(--bf-danger) 22%, transparent);
+}
+
+.strict-warning-mark svg {
+  width: 23px;
+  height: 23px;
+}
+
+.strict-warning-card h2 {
+  margin: 0;
+  color: var(--bf-text);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.strict-warning-card p {
+  margin: 9px 0 0;
+  /* 项目主题令牌里没有 --bf-text-secondary，回落到次级文字色 */
+  color: var(--bf-text-secondary, var(--bf-text-soft));
+  font-size: 10.5px;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+}
+
+.strict-warning-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.strict-warning-cancel,
+.strict-warning-confirm {
+  height: 36px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.strict-warning-cancel {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bf-muted);
+}
+
+.strict-warning-cancel:hover,
+.strict-warning-cancel:focus-visible {
+  background: var(--bf-item);
+  color: var(--bf-text-soft);
+}
+
+.strict-warning-confirm {
+  border: 1px solid var(--bf-danger);
+  background: var(--bf-danger);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.strict-warning-confirm:hover {
+  border-color: color-mix(in srgb, var(--bf-danger) 86%, #ffffff);
+  background: color-mix(in srgb, var(--bf-danger) 86%, #ffffff);
+}
+
+.strict-warning-confirm:focus-visible {
+  outline: 2px solid var(--bf-danger);
+  outline-offset: 2px;
+}
+
+@keyframes strict-warning-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes strict-warning-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-motion="reduced"] .strict-warning-backdrop,
+html[data-motion="reduced"] .strict-warning-card {
+  animation: none;
+}
+
+html[data-motion="reduced"] .strict-warning-cancel,
+html[data-motion="reduced"] .strict-warning-confirm {
+  transition: none;
+}
+
+/* 关掉弹窗后焦点回到「严格」开关。复选框本身是透明的，把焦点环画在可见的
+   switch 上，避免透明 input 静态位置浮出一个孤立描边。 */
+.control-tile input[type="checkbox"]:focus-visible {
+  outline: 0;
+}
+
+.control-tile input[type="checkbox"]:focus-visible + .switch {
+  outline: 2px solid var(--bf-accent);
+  outline-offset: 2px;
+}
+
+/* 批次 30：计划待确认时开始按钮改为「确认开启计划专注」，文案变长，收一点
+   字号 / 内边距 / 图标尺寸，保证 390 宽下与左侧大时钟同排且不横向溢出。 */
+#start-button[data-pending="true"] {
+  gap: 5px;
+  padding: 0 12px;
+}
+
+#start-button[data-pending="true"] svg {
+  width: 12px;
+  height: 12px;
+}
+
+#start-button[data-pending="true"] #start-label {
+  font-size: 10px;
+  letter-spacing: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* ---------- 批次 33：计划时间重叠拦截 + 计划编辑态 ---------- */
+/* 表单按钮行：编辑态多出「取消编辑」，新建态只剩「添加计划」占满整行。 */
+.schedule-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.schedule-form-actions .schedule-add {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-cancel-edit {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--bf-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bf-muted);
+  font-size: 10px;
+  font-weight: 600;
+  transition: background 0.16s, color 0.16s, border-color 0.16s;
+}
+
+.schedule-cancel-edit:hover,
+.schedule-cancel-edit:focus-visible {
+  border-color: var(--bf-focus-border);
+  background: var(--bf-item);
+  color: var(--bf-text-soft);
+}
+
+/* 编辑态：表单卡片与对应计划条同时描一圈强调色，避免改错对象。 */
+.schedule-add-card.editing {
+  border-color: var(--bf-accent);
+  box-shadow: 0 10px 26px var(--bf-shadow), 0 0 0 3px var(--bf-accent-soft);
+}
+
+.schedule-item.editing {
+  border-color: var(--bf-accent);
+  background: var(--bf-accent-soft);
+}
+
+/* 计划条上的编辑铅笔：22px 方块，与开关 / 删除同排。 */
+.schedule-edit {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bf-muted);
+  transition: background 0.16s, color 0.16s;
+}
+
+.schedule-edit svg {
+  width: 11px;
+  height: 11px;
+}
+
+.schedule-edit:hover,
+.schedule-edit:focus-visible {
+  background: var(--bf-item);
+  color: var(--bf-text);
+}
+
+.schedule-item.disabled .schedule-edit {
+  color: var(--bf-faint);
+}
+
+/* 重叠提示弹窗：结构照批次 27 的严格模式警告窗，class 与动效独立，
+   既有规则一条不改。遮罩同样压在最上层（两个弹窗不会同时出现）。 */
+#schedule-conflict-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.schedule-conflict-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: schedule-conflict-backdrop-in 0.2s ease both;
+}
+
+.schedule-conflict-card {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  padding: 20px 18px 16px;
+  border: 1px solid var(--bf-danger);
+  border-radius: 16px;
+  background: var(--bf-surface);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 22px 54px var(--bf-shadow);
+  text-align: center;
+  animation: schedule-conflict-card-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.schedule-conflict-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border: 1px solid color-mix(in srgb, var(--bf-danger) 30%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--bf-danger) 9%, transparent);
+  color: var(--bf-danger);
+  /* 极淡的红晕，只做到「有点分量」为止 */
+  box-shadow: 0 0 18px color-mix(in srgb, var(--bf-danger) 22%, transparent);
+}
+
+.schedule-conflict-mark svg {
+  width: 23px;
+  height: 23px;
+}
+
+.schedule-conflict-card h2 {
+  margin: 0;
+  color: var(--bf-text);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.schedule-conflict-card p {
+  margin: 9px 0 0;
+  /* 项目主题令牌里没有 --bf-text-secondary，回落到次级文字色 */
+  color: var(--bf-text-secondary, var(--bf-text-soft));
+  font-size: 10.5px;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+
+.schedule-conflict-actions {
+  margin-top: 16px;
+}
+
+.schedule-conflict-ok {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--bf-danger);
+  border-radius: 10px;
+  background: var(--bf-danger);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.schedule-conflict-ok:hover {
+  border-color: color-mix(in srgb, var(--bf-danger) 86%, #ffffff);
+  background: color-mix(in srgb, var(--bf-danger) 86%, #ffffff);
+}
+
+.schedule-conflict-ok:focus-visible {
+  outline: 2px solid var(--bf-danger);
+  outline-offset: 2px;
+}
+
+@keyframes schedule-conflict-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes schedule-conflict-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-motion="reduced"] .schedule-conflict-backdrop,
+html[data-motion="reduced"] .schedule-conflict-card {
+  animation: none;
+}
+
+html[data-motion="reduced"] .schedule-conflict-ok,
+html[data-motion="reduced"] .schedule-edit,
+html[data-motion="reduced"] .schedule-cancel-edit {
+  transition: none;
+}

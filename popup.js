@@ -12,7 +12,12 @@
     focusRestSettings: document.getElementById("focus-rest-settings"),
     breakEnabled: document.getElementById("break-enabled"),
     strict: document.getElementById("strict-mode"),
-    commentMode: document.getElementById("comment-mode"),
+    pureModeBtn: document.getElementById("pure-mode-btn"),
+    pureModePanel: document.getElementById("pure-mode-panel"),
+    toggleHideComments: document.getElementById("toggle-hide-comments"),
+    toggleHideRecommend: document.getElementById("toggle-hide-recommend"),
+    toggleHideAds: document.getElementById("toggle-hide-ads"),
+    toggleHideNavbar: document.getElementById("toggle-hide-navbar"),
     start: document.getElementById("start-button"),
     startLabel: document.getElementById("start-label"),
     stop: document.getElementById("stop-button"),
@@ -102,6 +107,13 @@
     scheduleEnd: document.getElementById("schedule-end"),
     scheduleStrict: document.getElementById("schedule-strict"),
     scheduleDuration: document.getElementById("schedule-duration"),
+    scheduleAddCard: document.getElementById("schedule-add-card"),
+    scheduleFormTitle: document.getElementById("schedule-form-title"),
+    cancelScheduleEdit: document.getElementById("cancel-schedule-edit"),
+    scheduleConflictLayer: document.getElementById("schedule-conflict-layer"),
+    scheduleConflictBackdrop: document.getElementById("schedule-conflict-backdrop"),
+    scheduleConflictDesc: document.getElementById("schedule-conflict-desc"),
+    scheduleConflictOk: document.getElementById("schedule-conflict-ok"),
     dayRow: document.getElementById("day-row"),
     addSchedule: document.getElementById("add-schedule"),
     settingsOpen: document.getElementById("open-settings"),
@@ -139,17 +151,32 @@
     posterLayer: document.getElementById("poster-layer"),
     posterBackdrop: document.getElementById("poster-backdrop"),
     posterClose: document.getElementById("poster-close"),
-    posterActions: document.getElementById("poster-actions")
+    posterActions: document.getElementById("poster-actions"),
+    strictWarningLayer: document.getElementById("strict-warning-layer"),
+    strictWarningBackdrop: document.getElementById("strict-warning-backdrop"),
+    strictWarningCancel: document.getElementById("strict-warning-cancel"),
+    strictWarningConfirm: document.getElementById("strict-warning-confirm")
   };
 
   let state = { ...BiliFocus.DEFAULT_STATE };
   let allowlist = { creators: [], courses: [], groups: [], sites: [] };
   let schedules = [];
+  let editingScheduleId = "";
+  let scheduleFormSnapshot = null;
   const selectedDays = new Set([1, 2, 3, 4, 5]);
-  let appearance = { ...BiliFocus.DEFAULT_APPEARANCE };
+  let appearance = BiliFocus.cleanAppearance();
   let appearanceSeq = 0;
   let appearancePending = 0;
   let appearanceWrite = Promise.resolve();
+
+  // Batch 24: one row per switch; the left checkbox owns `active`, the right
+  // pill owns `trigger`. Keep the order in sync with popup.html.
+  const PURE_OPTIONS = [
+    { key: "hideComments", input: elements.toggleHideComments, label: "隐藏评论区" },
+    { key: "hideRecommend", input: elements.toggleHideRecommend, label: "隐藏推荐栏" },
+    { key: "hideAds", input: elements.toggleHideAds, label: "隐藏B站广告" },
+    { key: "hideNavbar", input: elements.toggleHideNavbar, label: "隐藏导航栏" }
+  ];
   let timerConfig = { ...BiliFocus.DEFAULT_TIMER_CONFIG };
   let timerConfigSeq = 0;
   let timerConfigPending = 0;
@@ -339,10 +366,22 @@
     elements.scheduleStart.addEventListener("change", renderSchedulePreview);
     elements.scheduleEnd.addEventListener("change", renderSchedulePreview);
     elements.addSchedule.addEventListener("click", addSchedule);
+    elements.cancelScheduleEdit.addEventListener("click", cancelScheduleEdit);
+    bindScheduleConflictDialog();
     renderSchedulePreview();
 
-    elements.strict.addEventListener("change", persistPreferences);
-    elements.commentMode.addEventListener("change", saveCommentMode);
+    elements.strict.addEventListener("change", handleStrictChange);
+    bindStrictWarning();
+
+    elements.pureModeBtn.addEventListener("click", togglePureModePanel);
+    elements.pureModePanel.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-pure-trigger-for]");
+      if (!button) return;
+      togglePureTrigger(button.dataset.pureTriggerFor);
+    });
+    PURE_OPTIONS.forEach(({ input, key, label }) => {
+      input.addEventListener("change", () => setPureActive(key, input.checked, label));
+    });
 
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
@@ -359,7 +398,7 @@
     elements.addCurrentGroup.addEventListener("click", addCurrentGroup);
     elements.addSite.addEventListener("click", addSite);
     elements.addCurrentSite.addEventListener("click", addCurrentSite);
-    elements.start.addEventListener("click", startFocus);
+    elements.start.addEventListener("click", handleStartClick);
     elements.stop.addEventListener("click", stopFocus);
 
     bindEnter([elements.creatorInput, elements.creatorName], addCreator);
@@ -472,6 +511,8 @@
         elements.modeNote.textContent = "休息结束 · 等待继续";
       } else if (state.mode === "countup") {
         elements.modeNote.textContent = "正计时中 · 手动结束";
+      } else if (state.pendingPlan) {
+        elements.modeNote.textContent = "计划待确认";
       } else {
         elements.modeNote.textContent = `第 ${state.cycles + 1} 次专注`;
       }
@@ -570,6 +611,7 @@
     renderThemeSelection();
     renderTimerStyleSelection();
     elements.motionToggle.checked = appearance.reducedMotion;
+    renderPureOptions();
   }
 
   // localStorage is a first-paint hint only; write it after storage succeeds.
@@ -854,7 +896,6 @@
       applyTimerConfig();
     }
     elements.strict.checked = state.strict;
-    elements.commentMode.value = state.commentMode;
     if (!todosAreStale) pruneSelectedTask();
     render();
     startTicker();
@@ -1450,6 +1491,9 @@
     const phase = state.active ? state.phase : "focus";
     const mode = state.active ? state.mode : timerConfig.mode;
     const countup = mode === "countup";
+    // Batch 30: a scheduled plan is parked until the user confirms it. The
+    // start button turns into the confirmation button instead of hiding.
+    const pendingPlan = Boolean(state.active && state.pendingPlan);
     const locked = state.active && state.strict;
     const showSkip = state.active && phase === "break" && state.breakSkippable !== false;
     const showStop = state.active && !showSkip;
@@ -1459,23 +1503,36 @@
     elements.allowCard.title = locked ? "严格模式下不能修改白名单" : "";
     elements.strict.disabled = state.active || countup;
     elements.strict.checked = countup ? false : state.strict;
-    elements.start.classList.toggle("hidden", state.active);
+    elements.start.classList.toggle("hidden", state.active && !pendingPlan);
+    elements.start.dataset.pending = pendingPlan ? "true" : "false";
     elements.stop.classList.toggle("hidden", !showStop);
     elements.skipBreak.classList.toggle("hidden", !showSkip);
     elements.stop.disabled = state.active && state.strict && phase === "focus";
     elements.stop.title = elements.stop.disabled ? "严格模式下不能提前结束" : "";
-    elements.startLabel.textContent = countup ? "开始正计时" : "开始";
-    document.documentElement.dataset.phase = state.active
-      ? countup
-        ? "countup"
-        : phase
+    elements.startLabel.textContent = pendingPlan
+      ? "确认开启计划专注"
       : countup
-        ? "countup"
-        : "idle";
+        ? "开始正计时"
+        : "开始";
+    elements.start.title = pendingPlan
+      ? "确认开启计划专注"
+      : countup
+        ? "开始正计时"
+        : "开始专注";
+    document.documentElement.dataset.phase = pendingPlan
+      ? "idle"
+      : state.active
+        ? countup
+          ? "countup"
+          : phase
+        : countup
+          ? "countup"
+          : "idle";
 
     let statusText = "未开始";
     if (state.active) {
-      if (phase === "break") statusText = "休息中";
+      if (pendingPlan) statusText = "计划待确认";
+      else if (phase === "break") statusText = "休息中";
       else if (phase === "breakEnded") statusText = "休息结束";
       else if (state.mode === "countup") statusText = "正计时中";
       else statusText = "专注中";
@@ -1488,6 +1545,12 @@
   }
 
   function totalFocusRemainingMs() {
+    // Batch 32 (D1): a confirmed plan ends exactly at its window end. Deriving
+    // the clock from totalFocusMinutes (whole minutes) made it hit 00:00 up to
+    // a minute before the window actually closed.
+    if (state.active && state.auto && state.phase === "focus" && Number(state.endAt) > 0) {
+      return Math.max(0, Number(state.endAt) - Date.now());
+    }
     return Math.max(
       0,
       Number(state.totalFocusMinutes) * 60000 -
@@ -1529,8 +1592,17 @@
     const activeMode = state.active ? state.mode : timerConfig.mode;
     const phase = state.active ? state.phase : "focus";
     const countup = activeMode === "countup";
+    const pendingPlan = Boolean(state.active && state.pendingPlan);
 
-    if (countup) {
+    if (pendingPlan) {
+      // Batch 30: nothing is counting until the plan is confirmed, so do not
+      // paint a countdown that would keep ticking in the user's head.
+      elements.clock.textContent = "--:--";
+      elements.clockLabel.textContent = "计划待确认";
+      elements.heroMode.textContent = "计划待确认";
+      setProgress(0);
+      lastExpiryEndAt = 0;
+    } else if (countup) {
       if (state.active) {
         elements.clock.textContent = BiliFocus.formatClock(BiliFocus.elapsedMs(state));
         elements.clockLabel.textContent = "正计时中 · 手动结束";
@@ -1560,7 +1632,10 @@
     } else if (state.active) {
       const remaining = BiliFocus.remainingMs(state);
       const totalRemaining = totalFocusRemainingMs();
-      const total = Math.max(1, Number(state.totalFocusMinutes) * 60000);
+      const total =
+        state.auto && Number(state.endAt) > Number(state.phaseStartedAt)
+          ? Math.max(1, Number(state.endAt) - Number(state.phaseStartedAt))
+          : Math.max(1, Number(state.totalFocusMinutes) * 60000);
       const elapsedRatio = Math.min(1, Math.max(0, 1 - totalRemaining / total));
       elements.clock.textContent = BiliFocus.formatClock(totalRemaining);
       elements.clockLabel.textContent = state.auto
@@ -1676,6 +1751,12 @@
     elements.navScheduleCount.textContent = String(enabledCount);
     elements.scheduleEmpty.classList.toggle("hidden", schedules.length > 0);
     elements.scheduleList.replaceChildren(...schedules.map(makeScheduleItem));
+    // 正在编辑的计划被删除 / 被后台重写掉时，编辑态一起退出。
+    if (editingScheduleId && !schedules.some((schedule) => schedule.id === editingScheduleId)) {
+      editingScheduleId = "";
+      scheduleFormSnapshot = null;
+    }
+    applyScheduleFormMode();
     renderNextPlan();
   }
 
@@ -2338,6 +2419,8 @@
   function makeScheduleItem(schedule) {
     const item = document.createElement("div");
     item.className = schedule.enabled ? "schedule-item" : "schedule-item disabled";
+    item.dataset.scheduleId = schedule.id;
+    if (schedule.id === editingScheduleId) item.classList.add("editing");
 
     const time = document.createElement("div");
     time.className = "schedule-time";
@@ -2369,6 +2452,18 @@
     const track = document.createElement("i");
     toggle.append(input, track);
 
+    // 批次 33：点铅笔进入编辑态（表单回填 + 「保存修改」）。
+    const edit = document.createElement("button");
+    edit.className = "schedule-edit";
+    edit.type = "button";
+    edit.title = "编辑计划";
+    edit.setAttribute("aria-label", schedule.label ? `编辑计划「${schedule.label}」` : "编辑计划");
+    edit.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16z"></path><path d="M14 6l4 4"></path></svg>';
+    edit.addEventListener("click", () => beginScheduleEdit(schedule));
+
     const remove = document.createElement("button");
     remove.className = "schedule-remove";
     remove.type = "button";
@@ -2376,7 +2471,7 @@
     remove.textContent = "×";
     remove.addEventListener("click", () => removeSchedule(schedule.id));
 
-    item.append(time, copy, toggle, remove);
+    item.append(time, copy, toggle, edit, remove);
     return item;
   }
 
@@ -2406,9 +2501,11 @@
       const end = new Date(active.window.endAt);
       elements.nextPlanTitle.textContent = `${active.schedule.label} · ${active.schedule.start}–${active.schedule.end}`;
       elements.nextPlanSub.textContent =
-        state.active && state.auto
-          ? `计划专注中 · ${formatTimeLabel(end)} 结束`
-          : `计划时段内 · ${formatTimeLabel(end)} 结束`;
+        state.active && state.pendingPlan
+          ? `计划待确认 · ${formatTimeLabel(end)} 结束`
+          : state.active && state.auto
+            ? `计划专注中 · ${formatTimeLabel(end)} 结束`
+            : `计划时段内 · ${formatTimeLabel(end)} 结束`;
       return;
     }
 
@@ -2429,6 +2526,113 @@
       `${dayLabel(start, now)} ${next.schedule.start} · ${relativeLabel(next.window.startAt - now.getTime())}`;
   }
 
+  // 批次 33：计划表单在「新建 / 编辑」之间切换，编辑时保存会排除自己。
+  function syncDayButtons() {
+    elements.dayRow.querySelectorAll(".day-btn").forEach((button) => {
+      const active = selectedDays.has(Number(button.dataset.day));
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  function captureScheduleForm() {
+    return {
+      label: elements.scheduleLabel.value,
+      days: [...selectedDays],
+      start: elements.scheduleStart.value,
+      end: elements.scheduleEnd.value,
+      strict: elements.scheduleStrict.checked
+    };
+  }
+
+  function restoreScheduleForm(snapshot) {
+    const form = snapshot || {
+      label: "",
+      days: [1, 2, 3, 4, 5],
+      start: "09:00",
+      end: "11:00",
+      strict: true
+    };
+    elements.scheduleLabel.value = form.label;
+    selectedDays.clear();
+    form.days.forEach((day) => selectedDays.add(day));
+    syncDayButtons();
+    elements.scheduleStart.value = form.start;
+    elements.scheduleEnd.value = form.end;
+    elements.scheduleStrict.checked = form.strict;
+    renderSchedulePreview();
+  }
+
+  function applyScheduleFormMode() {
+    const editing = Boolean(editingScheduleId);
+    elements.scheduleFormTitle.textContent = editing ? "编辑计划" : "新建计划";
+    elements.addSchedule.textContent = editing ? "保存修改" : "添加计划";
+    elements.cancelScheduleEdit.classList.toggle("hidden", !editing);
+    elements.scheduleAddCard.classList.toggle("editing", editing);
+    elements.scheduleList.querySelectorAll(".schedule-item").forEach((item) => {
+      item.classList.toggle("editing", item.dataset.scheduleId === editingScheduleId);
+    });
+  }
+
+  function beginScheduleEdit(schedule) {
+    if (!schedule) return;
+    if (!editingScheduleId) scheduleFormSnapshot = captureScheduleForm();
+    editingScheduleId = schedule.id;
+    elements.scheduleLabel.value = schedule.label;
+    selectedDays.clear();
+    schedule.days.forEach((day) => selectedDays.add(day));
+    syncDayButtons();
+    elements.scheduleStart.value = schedule.start;
+    elements.scheduleEnd.value = schedule.end;
+    elements.scheduleStrict.checked = schedule.strict;
+    applyScheduleFormMode();
+    renderSchedulePreview();
+    elements.scheduleAddCard.scrollIntoView({ block: "nearest" });
+    elements.scheduleLabel.focus({ preventScroll: true });
+  }
+
+  function cancelScheduleEdit() {
+    if (!editingScheduleId) return;
+    editingScheduleId = "";
+    restoreScheduleForm(scheduleFormSnapshot);
+    scheduleFormSnapshot = null;
+    applyScheduleFormMode();
+    elements.addSchedule.focus({ preventScroll: true });
+  }
+
+  // 批次 33：重叠提示用项目内自定义弹窗，绝不使用 window.alert/confirm。
+  function bindScheduleConflictDialog() {
+    elements.scheduleConflictOk.addEventListener("click", closeScheduleConflict);
+    elements.scheduleConflictBackdrop.addEventListener("click", closeScheduleConflict);
+    elements.scheduleConflictLayer.addEventListener("click", (event) => {
+      if (event.target === elements.scheduleConflictLayer) closeScheduleConflict();
+    });
+    elements.scheduleConflictLayer.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeScheduleConflict();
+    });
+  }
+
+  function openScheduleConflict(conflicts) {
+    const names = conflicts.map((item) => `「${item.label}」`).join("、");
+    elements.scheduleConflictDesc.textContent = `与计划${names}时间重叠`;
+    elements.scheduleConflictLayer.classList.remove("hidden");
+    elements.scheduleConflictLayer.setAttribute("aria-hidden", "false");
+    elements.scheduleConflictOk.focus({ preventScroll: true });
+  }
+
+  function closeScheduleConflict() {
+    if (elements.scheduleConflictLayer.classList.contains("hidden")) return;
+    elements.scheduleConflictLayer.classList.add("hidden");
+    elements.scheduleConflictLayer.setAttribute("aria-hidden", "true");
+    elements.addSchedule.focus({ preventScroll: true });
+  }
+
+  function makeScheduleId() {
+    return `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  }
+
   async function addSchedule() {
     const days = [...selectedDays].sort((a, b) => a - b);
     if (!days.length) {
@@ -2447,22 +2651,41 @@
       return;
     }
 
-    const id = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const editing = schedules.find((schedule) => schedule.id === editingScheduleId) || null;
     const schedule = BiliFocus.cleanSchedule({
-      id,
+      id: editing ? editing.id : makeScheduleId(),
       label: elements.scheduleLabel.value,
       days,
       start,
       end,
-      enabled: true,
+      // 编辑时保留原启用状态，避免顺手把暂停的计划改成启用。
+      enabled: editing ? editing.enabled : true,
       strict: elements.scheduleStrict.checked
     });
     if (!schedule) {
       showToast("计划信息不完整", true);
       return;
     }
-    const saved = await persistSchedules([...schedules, schedule], "计划已添加");
-    if (saved) elements.scheduleLabel.value = "";
+
+    // 批次 33：与任何已有计划（含已暂停）时间重叠就拒绝保存；编辑时排除自己。
+    const conflicts = BiliFocus.findScheduleConflicts(schedule, schedules, editing ? editing.id : "");
+    if (conflicts.length) {
+      openScheduleConflict(conflicts);
+      return;
+    }
+
+    const next = editing
+      ? schedules.map((item) => (item.id === schedule.id ? schedule : item))
+      : [...schedules, schedule];
+    const saved = await persistSchedules(next, editing ? "计划已更新" : "计划已添加");
+    if (!saved) return;
+    if (editing) {
+      editingScheduleId = "";
+      scheduleFormSnapshot = null;
+      applyScheduleFormMode();
+    } else {
+      elements.scheduleLabel.value = "";
+    }
   }
 
   function toggleSchedule(id, enabled) {
@@ -2743,6 +2966,60 @@
     preferenceTimer = setTimeout(persistPreferences, 250);
   }
 
+  // 批次 27：严格模式默认关闭；仅「关 → 开」时弹自定义警告弹窗确认，
+  // 取消 / 点遮罩 / 按 Esc 都不写存储，只有点「确认开启」才真正保存。
+  function handleStrictChange() {
+    if (!elements.strict.checked) {
+      persistPreferences();
+      return;
+    }
+    // 确认前开关先退回关闭态，避免 UI 提前显示成已开启。
+    elements.strict.checked = false;
+    openStrictWarning();
+  }
+
+  function bindStrictWarning() {
+    elements.strictWarningCancel.addEventListener("click", closeStrictWarning);
+    elements.strictWarningConfirm.addEventListener("click", confirmStrictWarning);
+    elements.strictWarningBackdrop.addEventListener("click", closeStrictWarning);
+    // 弹窗外（layer 自身而非卡片）也视为取消。
+    elements.strictWarningLayer.addEventListener("click", (event) => {
+      if (event.target === elements.strictWarningLayer) closeStrictWarning();
+    });
+    elements.strictWarningLayer.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeStrictWarning();
+    });
+  }
+
+  function openStrictWarning() {
+    elements.strictWarningLayer.classList.remove("hidden");
+    elements.strictWarningLayer.setAttribute("aria-hidden", "false");
+    // 焦点落在「取消」上：即便误按 Enter 也只是关掉弹窗，不会保存。
+    elements.strictWarningCancel.focus({ preventScroll: true });
+  }
+
+  function isStrictWarningOpen() {
+    return !elements.strictWarningLayer.classList.contains("hidden");
+  }
+
+  function closeStrictWarning() {
+    if (!isStrictWarningOpen()) return;
+    elements.strictWarningLayer.classList.add("hidden");
+    elements.strictWarningLayer.setAttribute("aria-hidden", "true");
+    elements.strict.focus({ preventScroll: true });
+  }
+
+  // 只认真实点击：键盘 Enter / Space 触发的 click 事件 detail 为 0，直接忽略。
+  function confirmStrictWarning(event) {
+    if (event && event.detail === 0) return;
+    closeStrictWarning();
+    if (timerConfig.mode === "countup" || state.active) return;
+    elements.strict.checked = true;
+    persistPreferences();
+  }
+
   function persistPreferences() {
     clearTimeout(preferenceTimer);
     if (
@@ -2762,19 +3039,65 @@
     });
   }
 
-  function saveCommentMode() {
-    const mode = elements.commentMode.value;
-    return queueSettingsWrite(async () => {
-      const result = await sendMessage({ type: "saveCommentMode", mode });
-      if (!result?.ok) {
-        elements.commentMode.value = state.commentMode;
-        showToast(result?.error || "评论区设置保存失败", true);
-        return;
+  function togglePureModePanel() {
+    const hidden = elements.pureModePanel.classList.toggle("hidden");
+    elements.pureModeBtn.setAttribute("aria-expanded", String(!hidden));
+  }
+
+  // Batch 24: a switch is { active, trigger }. Read through a tiny helper so a
+  // value written by an older build (bare boolean) still renders correctly.
+  function pureOption(key) {
+    const value = appearance[key];
+    if (value && typeof value === "object") {
+      return {
+        active: value.active === true,
+        trigger: value.trigger === "always" ? "always" : "focus"
+      };
+    }
+    return { active: value === true, trigger: "focus" };
+  }
+
+  // The left checkbox only writes `active`; the whole object is sent so the
+  // worker stores a complete { active, trigger } pair for this one switch.
+  function setPureActive(key, enabled, label) {
+    const current = pureOption(key);
+    const next = Boolean(enabled);
+    if (current.active === next) return;
+    const previous = appearance;
+    const nextOption = { ...current, active: next };
+    appearance = { ...appearance, [key]: nextOption };
+    applyAppearance();
+    return persistAppearance(previous, { [key]: nextOption }).then((ok) => {
+      if (ok) showToast(`B站净化：${label}已${next ? "开启" : "关闭"}`);
+    });
+  }
+
+  // The right pill only writes `trigger`, flipping focus <-> always.
+  function togglePureTrigger(key) {
+    const option = PURE_OPTIONS.find((item) => item.key === key);
+    if (!option) return;
+    const current = pureOption(key);
+    const next = current.trigger === "always" ? "focus" : "always";
+    const previous = appearance;
+    const nextOption = { ...current, trigger: next };
+    appearance = { ...appearance, [key]: nextOption };
+    applyAppearance();
+    return persistAppearance(previous, { [key]: nextOption }).then((ok) => {
+      if (ok) {
+        showToast(`B站净化：${option.label} · ${next === "always" ? "始终净化" : "仅专注"}`);
       }
-      state = BiliFocus.cleanState(result.state);
-      elements.commentMode.value = state.commentMode;
-      const label = state.commentMode === "always" ? "始终遮蔽" : state.commentMode === "focus" ? "仅专注时遮蔽" : "不遮蔽";
-      showToast(`评论区：${label}`);
+    });
+  }
+
+  function renderPureOptions() {
+    PURE_OPTIONS.forEach(({ key, input }) => {
+      input.checked = pureOption(key).active === true;
+    });
+    elements.pureModePanel.querySelectorAll("[data-pure-trigger-for]").forEach((button) => {
+      const always = pureOption(button.dataset.pureTriggerFor).trigger === "always";
+      button.textContent = always ? "始终净化" : "仅专注";
+      button.dataset.trigger = always ? "always" : "focus";
+      button.setAttribute("aria-pressed", String(always));
     });
   }
 
@@ -2791,6 +3114,35 @@
         handler();
       });
     });
+  }
+
+  // Batch 30: a plan that reached its start time only locks the guard. The
+  // start button becomes the confirmation button until the user opts in.
+  function handleStartClick() {
+    if (state.active && state.pendingPlan) {
+      confirmPendingFocus();
+      return;
+    }
+    startFocus();
+  }
+
+  async function confirmPendingFocus() {
+    if (elements.start.disabled) return;
+    elements.start.disabled = true;
+    try {
+      const result = await sendMessage({ type: "confirmPendingFocus" });
+      if (!result?.ok) {
+        showToast(result?.error || "开启失败", true);
+        return;
+      }
+      state = BiliFocus.cleanState(result.state);
+      lastExpiryEndAt = 0;
+      render();
+      startTicker();
+      showToast("计划专注已开启，计时与记录开始");
+    } finally {
+      elements.start.disabled = false;
+    }
   }
 
   async function startFocus() {

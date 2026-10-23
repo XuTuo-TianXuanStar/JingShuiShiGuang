@@ -94,3 +94,105 @@ html.bf-comment-mask-active [data-bf-comment-hidden="true"] {
   background: #3a1f1f !important;
   color: #ffe9e5 !important;
 }
+
+/* ---------- 批次 19：B站净化独立开关 ---------- */
+/* 由 content.js 按 appearance.hideComments / hideRecommend / hideAds / hideNavbar
+   的 active + trigger 给 <html> 挂 bf-hide-*（批次 24 起每项独立决定时机）。
+   批次 16 的 bf-pure-mode 规则已在批次 20 删除（content.js 只保留清除残留类），
+   这里只隐藏评论区、右侧推荐栏、广告位与顶部导航栏，不包含任何弹幕发送区选择器。 */
+.bf-hide-comments #commentapp,
+.bf-hide-comments .bili-comments,
+.bf-hide-comments bili-comments {
+  display: none !important;
+}
+
+.bf-hide-recommend .right-container {
+  display: none !important;
+}
+
+.bf-hide-ads .ad-report,
+.bf-hide-ads .video-page-special-card,
+.bf-hide-ads .video-page-game-card-small,
+.bf-hide-ads .ad-floor-cover,
+.bf-hide-ads .activity-m-v1,
+.bf-hide-ads .pop-live-small-mode,
+.bf-hide-ads .gg-pic,
+.bf-hide-ads .adcard,
+.bf-hide-ads .banner-card,
+.bf-hide-ads .ad-banner,
+.bf-hide-ads .video-card-ad-small,
+.bf-hide-ads #slide_ad {
+  display: none !important;
+}
+
+/* ---------- 批次 24：隐藏 B 站顶部导航栏 ---------- */
+/* 只命中 B 站的页头容器：带 banner 的首页保留 banner，仅隐藏导航条；
+   视频页等没有 banner 的页头整体收起。不碰播放器、弹幕与内容区。 */
+html.bf-hide-navbar .bili-header__bar,
+html.bf-hide-navbar .bili-header__channel,
+html.bf-hide-navbar .mini-header,
+html.bf-hide-navbar .international-header,
+html.bf-hide-navbar .international-header__nav {
+  display: none !important;
+}
+
+/* 单独一条 :has 规则：不支持 :has 的浏览器只会丢掉这条，上面隐藏导航条的
+   规则仍然生效，不会因为选择器列表里有 :has 而整条失效。 */
+html.bf-hide-navbar .bili-header:not(:has(.bili-header__banner)),
+html.bf-hide-navbar #biliMainHeader:not(:has(.bili-header__banner)) {
+  display: none !important;
+}
+
+/* 批次 24 复核 bf-hide-ads：上面的选择器都是 B 站广告容器（广告标识、推广卡、
+   活动卡、游戏卡、直播推广、搜索广告、轮播广告），没有把普通推荐卡片或
+   播放器区域写进来，因此不额外追加更宽泛的选择器。 */
+
+/* ---------- 批次 25：隐藏推荐下沉到推荐列表，保留合集/选集 ---------- */
+/* 批次 19 的 `.bf-hide-recommend .right-container` 会把整个右侧栏一起藏掉，
+   右栏里的合集/选集面板（.video-pod / .base-video-sections-v1 等）也被误伤。
+   下面按“只追加、不改旧规则”的原则在其后覆盖：先把 .right-container 恢复为
+   正常块级容器（与旧规则同优先级、后出现，因此生效），再把隐藏范围收窄到
+   推荐视频列表本体，不写任何合集/选集类名。 */
+html.bf-hide-recommend .right-container {
+  display: block !important;
+}
+
+/* 推荐列表：B 站视频页/番剧页右栏的“相关推荐”容器与卡片。
+   只隐藏列表本体，不隐藏承载它的右栏包裹层。 */
+html.bf-hide-recommend .right-container .recommend-list-v1,
+html.bf-hide-recommend .right-container .recommend-list,
+html.bf-hide-recommend .right-container .rec-list,
+html.bf-hide-recommend .right-container .video-page-recommend,
+html.bf-hide-recommend .right-container .video-page-recommend-list,
+html.bf-hide-recommend .right-container .recommend-list-v1__item,
+html.bf-hide-recommend .right-container .video-page-card-small {
+  display: none !important;
+}
+
+/* 兜底：推荐容器类名带版本后缀（recommend-list-v1 / v2 …）时也能命中。
+   :not(:has(...)) 保证即使某个版本把合集/选集包进同名容器，这条也不会
+   把它藏掉。不支持 :has 的浏览器只会丢弃这一条，上面的精确类名规则仍生效。 */
+html.bf-hide-recommend .right-container :is(
+  [class^="recommend-list-"],
+  [class*=" recommend-list-"]
+):not(:has(
+  .video-pod,
+  .video-pod__body,
+  .base-video-sections-v1,
+  .video-sections-v1,
+  .video-section-list,
+  .playlist-container
+)) {
+  display: none !important;
+}
+
+/* 合集/选集面板不在任何隐藏目标里，右栏恢复显示后它们自然可见；
+   这里只做一次显式声明，防止后续更宽泛的隐藏规则再次波及。 */
+html.bf-hide-recommend .video-pod,
+html.bf-hide-recommend .video-pod__body,
+html.bf-hide-recommend .base-video-sections-v1,
+html.bf-hide-recommend .video-sections-v1,
+html.bf-hide-recommend .video-section-list,
+html.bf-hide-recommend .playlist-container {
+  visibility: visible !important;
+}

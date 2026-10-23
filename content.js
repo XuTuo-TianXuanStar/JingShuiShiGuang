@@ -1,13 +1,21 @@
 (function runGuard() {
   "use strict";
 
-  const GUARD_VERSION = "1.3.0";
+  const GUARD_VERSION = "1.8.0";
   if (globalThis.__biliFocusGuardLoaded === GUARD_VERSION) return;
   globalThis.__biliFocusGuardLoaded = GUARD_VERSION;
 
   const ROOT_PENDING = "bf-guard-pending";
   const ROOT_BLOCKED = "bf-guard-blocked";
   const ROOT_COMMENT_ACTIVE = "bf-comment-mask-active";
+  // Batch 16's single pure-mode class is retired (it also hid the danmaku
+  // sending area). Batch 19 uses three independent opt-in classes below; the
+  // old class is only removed when clearing stale presentation.
+  const ROOT_PURE_MODE = "bf-pure-mode";
+  const ROOT_HIDE_COMMENTS = "bf-hide-comments";
+  const ROOT_HIDE_RECOMMEND = "bf-hide-recommend";
+  const ROOT_HIDE_ADS = "bf-hide-ads";
+  const ROOT_HIDE_NAVBAR = "bf-hide-navbar";
   const COMMENT_HIDDEN_ATTR = "data-bf-comment-hidden";
   const COMMENT_SELECTORS = ["#commentapp", "#comment", "#comment-module", ".video-comments", "bili-comments"];
   let observer = null;
@@ -20,11 +28,32 @@
   let runToken = 0;
   let lastUrl = location.href;
   let appearance = BiliFocus.cleanAppearance();
+  let lastState = BiliFocus.DEFAULT_STATE;
   let appearanceSeq = 0;
   let appearanceHintPromise = null;
   let lastBlock = null;
   const mediaStates = new Map();
   const maskedCommentRoots = new Set();
+
+  // With "all_frames", this script also runs inside iframes. Sub frames do one
+  // thing only: follow the top frame's play/pause decision for their own media.
+  const TOP_FRAME = (() => {
+    try {
+      return window.top === window.self;
+    } catch (_error) {
+      return false;
+    }
+  })();
+  // URL we already made an allow / block decision for. Re-checking that URL must
+  // not repaint the "checking" overlay, otherwise every window switch flashes.
+  let decidedUrl = "";
+  let retryTimer = null;
+  let failureRetries = 0;
+
+  if (!TOP_FRAME) {
+    installSubframeGuard();
+    return;
+  }
 
   clearStalePresentation();
   if (BiliFocus.isBilibiliUrl(location.href)) {
@@ -35,6 +64,10 @@
   setInterval(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
+      // SPA route changes reuse the same <html>; re-judge the purification
+      // classes immediately so a page that became non-B站 drops them without
+      // waiting for the async getData round-trip.
+      syncPureClasses();
       evaluatePage();
     }
   }, 750);
@@ -45,15 +78,30 @@
     if (!document.hidden) queueLifecycleRecheck();
   });
 
+  // A frame that just loaded (or a frame nested deeper) asks for the current
+  // decision; answer with whatever the top frame is doing right now.
+  window.addEventListener("message", (event) => {
+    if (event.data?.channel !== "bf-guard" || event.data?.type !== "hello") return;
+    const knownFrame = [...document.querySelectorAll("iframe, frame")].some(
+      (frame) => frame.contentWindow === event.source
+    );
+    if (!knownFrame) return;
+    const blocked = document.documentElement.classList.contains(ROOT_BLOCKED);
+    event.source?.postMessage({ channel: "bf-guard", type: blocked ? "blocked" : "allowed" }, "*");
+  });
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.appearance) {
       appearanceSeq += 1;
       applyAppearanceValue(changes.appearance.newValue);
+      syncPureClasses();
       if (lastBlock) {
         mountOverlay("blocked", lastBlock.state, lastBlock.allowlist, lastBlock.kind);
       } else if (document.documentElement.classList.contains(ROOT_PENDING)) {
         mountOverlay("checking");
+      } else if (lastState?.active && lastState.pendingPlan) {
+        mountOverlay("pending", lastState);
       }
       return;
     }
@@ -91,7 +139,8 @@
     const token = ++runToken;
     const appearanceSeqAtStart = appearanceSeq;
     const onBilibili = BiliFocus.isBilibiliUrl(location.href);
-    if (onBilibili) {
+    const knownDecision = decidedUrl === location.href;
+    if (onBilibili && !knownDecision) {
       document.documentElement.classList.add(ROOT_PENDING);
     }
 
@@ -99,17 +148,17 @@
     // overlay, so a slow service worker cannot paint noir and then jump themes.
     await ensureAppearanceHint();
     if (token !== runToken) return;
-    if (onBilibili && !document.getElementById("bf-guard-host")) {
+    if (onBilibili && !knownDecision && !document.getElementById("bf-guard-host")) {
       mountOverlay("checking");
     }
 
     const result = await sendMessage({ type: "getData" });
     if (token !== runToken) return;
     if (!result?.ok) {
-      syncCommentMask(BiliFocus.DEFAULT_STATE);
-      allowPage();
+      handleDataFailure();
       return;
     }
+    failureRetries = 0;
 
     // Do not let a slow getData reply roll a newer theme back.
     if (appearanceSeqAtStart === appearanceSeq) applyAppearanceValue(result.appearance);
@@ -117,8 +166,11 @@
       if (document.documentElement.classList.contains(ROOT_PENDING)) mountOverlay("checking");
     }
 
+    lastState = result.state;
     syncCommentMask(result.state);
+    syncPureClasses(result.state);
     scheduleDeadlineRecheck(result.state);
+
     // Rest and the "break finished" pause release the guard; only an active
     // focus phase keeps unapproved pages blocked.
     if (!result.state?.active || result.state.phase !== "focus") {
@@ -129,7 +181,7 @@
     const allowlist = BiliFocus.cleanAllowlist(result.allowlist);
     if (!onBilibili) {
       if (BiliFocus.isSiteAllowed(location.href, allowlist.sites)) {
-        allowPage();
+        allowOrPending(result.state);
         return;
       }
       blockPage(result.state, allowlist, "site");
@@ -137,23 +189,23 @@
     }
 
     if (BiliFocus.isBilibiliEntryAllowed(location.href)) {
-      allowPage();
+      allowOrPending(result.state);
       return;
     }
 
     if (BiliFocus.isCourseAllowed(location.href, allowlist.courses)) {
-      allowPage();
+      allowOrPending(result.state);
       return;
     }
 
     if (BiliFocus.isContentGroupAllowed(location.href, allowlist.groups)) {
-      allowPage();
+      allowOrPending(result.state);
       return;
     }
 
     const spaceMid = BiliFocus.extractMid(location.href);
     if (spaceMid && allowlist.creators.some((creator) => creator.mid === spaceMid)) {
-      allowPage();
+      allowOrPending(result.state);
       return;
     }
 
@@ -163,16 +215,41 @@
       const pageInfo = await sendMessage({ type: "resolvePageInfo", url: location.href, title: document.title });
       if (token !== runToken) return;
       if (pageInfo?.ok && pageInfo.creator && allowlist.creators.some((creator) => creator.mid === pageInfo.creator.mid)) {
-        allowPage();
+        allowOrPending(result.state);
         return;
       }
       if (pageInfo?.ok && (pageInfo.groups || []).some((group) => BiliFocus.isGroupAllowed(group, allowlist.groups))) {
-        allowPage();
+        allowOrPending(result.state);
         return;
       }
     }
 
     blockPage(result.state, allowlist, "bilibili");
+  }
+
+  // The worker can be asleep, restarting or just slow. Do not fail open: keep
+  // the page blocked and retry, so a stalled background cannot lift the guard.
+  function handleDataFailure() {
+    if (!chrome.runtime?.id) {
+      // Extension was reloaded or removed: nothing can answer us any more.
+      lastState = BiliFocus.DEFAULT_STATE;
+      syncCommentMask(lastState);
+      syncPureClasses(lastState);
+      allowPage();
+      return;
+    }
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    failureRetries += 1;
+    document.documentElement.classList.remove(ROOT_PENDING);
+    document.documentElement.classList.add(ROOT_BLOCKED);
+    mountOverlay("error");
+    broadcastFrameState(true);
+    const delay = Math.min(8000, 400 * 2 ** Math.min(failureRetries, 5));
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      evaluatePage();
+    }, delay);
   }
 
   function applyAppearanceValue(value) {
@@ -213,6 +290,10 @@
 
   function allowPage() {
     lastBlock = null;
+    decidedUrl = location.href;
+    failureRetries = 0;
+    clearTimeout(retryTimer);
+    retryTimer = null;
     document.documentElement.classList.remove(ROOT_PENDING, ROOT_BLOCKED);
     const host = document.getElementById("bf-guard-host");
     if (host) host.remove();
@@ -221,10 +302,48 @@
     if (ticker) clearInterval(ticker);
     ticker = null;
     restoreMedia();
+    // Idempotent for frames: safe to send even when they were never paused.
+    broadcastFrameState(false);
+  }
+
+  // Batch 30: an allowed page is not blocked by a pending plan, but it is not
+  // let through either: the full-screen "pending" overlay stays up and the page
+  // is unusable until the plan is confirmed. Nothing is recorded before that.
+  function allowOrPending(state) {
+    if (state?.active && state.pendingPlan) {
+      holdPendingPage(state);
+      return;
+    }
+    allowPage();
+  }
+
+  function holdPendingPage(state) {
+    lastBlock = null;
+    decidedUrl = location.href;
+    failureRetries = 0;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    document.documentElement.classList.remove(ROOT_PENDING, ROOT_BLOCKED);
+    if (observer) observer.disconnect();
+    observer = null;
+    if (ticker) clearInterval(ticker);
+    ticker = null;
+    restoreMedia();
+    mountOverlay("pending", state);
+    broadcastFrameState(false);
   }
 
   function clearStalePresentation() {
-    document.documentElement.classList.remove(ROOT_PENDING, ROOT_BLOCKED, ROOT_COMMENT_ACTIVE);
+    document.documentElement.classList.remove(
+      ROOT_PENDING,
+      ROOT_BLOCKED,
+      ROOT_COMMENT_ACTIVE,
+      ROOT_PURE_MODE,
+      ROOT_HIDE_COMMENTS,
+      ROOT_HIDE_RECOMMEND,
+      ROOT_HIDE_ADS,
+      ROOT_HIDE_NAVBAR
+    );
     document.getElementById("bf-guard-host")?.remove();
     document.getElementById("bf-comment-mask")?.remove();
     document.querySelectorAll(`[${COMMENT_HIDDEN_ATTR}]`).forEach((root) => {
@@ -249,6 +368,10 @@
   }
 
   function blockPage(state, allowlist, kind) {
+    decidedUrl = location.href;
+    failureRetries = 0;
+    clearTimeout(retryTimer);
+    retryTimer = null;
     document.documentElement.classList.remove(ROOT_PENDING);
     document.documentElement.classList.add(ROOT_BLOCKED);
     lastBlock = { state, allowlist, kind };
@@ -257,6 +380,50 @@
     observer = new MutationObserver(pauseMedia);
     observer.observe(document.documentElement, { childList: true, subtree: true });
     mountOverlay("blocked", state, allowlist, kind);
+    broadcastFrameState(true);
+  }
+
+  // Top frame -> child frames: keep their own audio paused while blocked.
+  // Nested frames relay the same message further down.
+  function broadcastFrameState(blocked) {
+    const payload = { channel: "bf-guard", type: blocked ? "blocked" : "allowed" };
+    document.querySelectorAll("iframe, frame").forEach((frame) => {
+      try {
+        frame.contentWindow?.postMessage(payload, "*");
+      } catch (_error) {
+        // Cross-origin or detached frame: nothing we can do.
+      }
+    });
+  }
+
+  function installSubframeGuard() {
+    let blocked = false;
+    const apply = () => (blocked ? pauseMedia() : restoreMedia());
+    window.addEventListener("message", (event) => {
+      const data = event.data;
+      if (!data || data.channel !== "bf-guard") return;
+      if (event.source !== window.parent) return;
+      if (data.type === "hello") {
+        event.source?.postMessage(
+          { channel: "bf-guard", type: blocked ? "blocked" : "allowed" },
+          "*"
+        );
+        return;
+      }
+      if (data.type !== "blocked" && data.type !== "allowed") return;
+      blocked = data.type === "blocked";
+      apply();
+      broadcastFrameState(blocked);
+    });
+    // Media injected after the decision (players mount late) still gets paused.
+    new MutationObserver(() => {
+      if (blocked) pauseMedia();
+    }).observe(document.documentElement, { childList: true, subtree: true });
+    try {
+      window.parent.postMessage({ channel: "bf-guard", type: "hello" }, "*");
+    } catch (_error) {
+      // Detached frame.
+    }
   }
 
   function pauseMedia() {
@@ -288,6 +455,38 @@
       commentObserver = new MutationObserver(scheduleCommentScan);
       commentObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
+  }
+
+  // Batch 24: each switch decides independently. `active` alone gates it;
+  // `trigger === "always"` applies on every B站 page, while "focus" requires
+  // both an active session and phase === "focus". A disabled switch always
+  // removes its class, so turning it off recovers immediately (even after SPA
+  // route changes) instead of waiting for a phase transition.
+  function pureFeatureEnabled(feature, inFocus) {
+    if (!feature || feature.active !== true) return false;
+    return feature.trigger === "always" || inFocus;
+  }
+
+  function syncPureClasses(state = lastState) {
+    const root = document.documentElement;
+    const onBilibili = BiliFocus.isBilibiliUrl(location.href);
+    const inFocus = Boolean(state?.active) && state.phase === "focus";
+    root.classList.toggle(
+      ROOT_HIDE_COMMENTS,
+      onBilibili && pureFeatureEnabled(appearance.hideComments, inFocus)
+    );
+    root.classList.toggle(
+      ROOT_HIDE_RECOMMEND,
+      onBilibili && pureFeatureEnabled(appearance.hideRecommend, inFocus)
+    );
+    root.classList.toggle(
+      ROOT_HIDE_ADS,
+      onBilibili && pureFeatureEnabled(appearance.hideAds, inFocus)
+    );
+    root.classList.toggle(
+      ROOT_HIDE_NAVBAR,
+      onBilibili && pureFeatureEnabled(appearance.hideNavbar, inFocus)
+    );
   }
 
   function scheduleCommentScan() {
@@ -373,6 +572,73 @@
       shadow.innerHTML = `${styles(theme)}<main><section class="card checking"><div class="spinner"></div><p>正在检查专注白名单…</p></section></main>`;
       return;
     }
+    if (mode === "error") {
+      if (ticker) clearInterval(ticker);
+      ticker = null;
+      shadow.innerHTML = `${styles(theme)}
+        <main>
+          <section class="card">
+            ${logo}
+            <p class="eyebrow">专注服务暂时没有响应</p>
+            <h1>正在重新连接</h1>
+            <p class="sub">为了不打断本次专注，这一页会继续保持拦截。稍等片刻会自动重试。</p>
+            <div class="actions">
+              <button id="bf-retry">立即重试</button>
+            </div>
+          </section>
+        </main>`;
+      shadow.getElementById("bf-retry")?.addEventListener("click", () => evaluatePage());
+      return;
+    }
+
+    if (mode === "blocked" && state?.pendingPlan) {
+      // Batch 30: the plan reached its start time but the user has not
+      // confirmed yet. Keep blocking unapproved pages, and put the confirm
+      // button right here so the plan can be started from the blocked page.
+      if (ticker) clearInterval(ticker);
+      ticker = null;
+      shadow.innerHTML = `${styles(theme)}
+        <main>
+          <section class="card card-pending-blocked">
+            ${logo}
+            <p class="eyebrow">计划专注 · 待确认</p>
+            <h1>当前为计划专注时间段</h1>
+            <p class="sub">点击确认以开启专注记录。</p>
+            <p class="note" id="bf-pending-note">这一页不在本次允许列表里；确认后仍会保持拦截。</p>
+            <div class="actions">
+              <button id="bf-confirm-pending">确认开启</button>
+              <button class="secondary" id="bf-back">返回上一页</button>
+              <button class="secondary" id="bf-close">关闭此页</button>
+            </div>
+          </section>
+        </main>`;
+      bindPendingConfirm(shadow);
+      bindBlockedActions(shadow);
+      return;
+    }
+
+    if (mode === "pending") {
+      // Batch 30: an allowed page under a pending plan still gets the full-screen
+      // confirmation overlay. It is not usable and nothing is recorded until the
+      // plan is confirmed.
+      if (ticker) clearInterval(ticker);
+      ticker = null;
+      shadow.innerHTML = `${styles(theme)}
+        <main>
+          <section class="card">
+            ${logo}
+            <p class="eyebrow">计划专注 · 待确认</p>
+            <h1>当前为计划专注时间段</h1>
+            <p class="sub">点击确认以开启专注记录。</p>
+            <p class="note" id="bf-pending-note">不确认时不会产生专注记录；确认后开始计时。</p>
+            <div class="actions">
+              <button id="bf-confirm-pending">确认开启</button>
+            </div>
+          </section>
+        </main>`;
+      bindPendingConfirm(shadow);
+      return;
+    }
 
     const creatorNames = (allowlist.creators || []).map((item) => escapeHtml(item.name));
     const courseNames = (allowlist.courses || []).map((item) => escapeHtml(item.label));
@@ -406,11 +672,7 @@
         </section>
       </main>`;
 
-    shadow.getElementById("bf-back")?.addEventListener("click", () => history.back());
-    shadow.getElementById("bf-close")?.addEventListener("click", () => {
-      chrome.runtime.sendMessage({ type: "closeCurrentTab" });
-      window.close();
-    });
+    bindBlockedActions(shadow);
 
     if (ticker) clearInterval(ticker);
     ticker = setInterval(() => {
@@ -423,6 +685,36 @@
         evaluatePage();
       }
     }, 1000);
+  }
+
+  function bindBlockedActions(shadow) {
+    shadow.getElementById("bf-back")?.addEventListener("click", () => history.back());
+    shadow.getElementById("bf-close")?.addEventListener("click", () => {
+      chrome.runtime.sendMessage({ type: "closeCurrentTab" });
+      window.close();
+    });
+  }
+
+  // Batch 30: one click turns the pending plan into a running session. The
+  // background writes sessionId / startedAt; the page re-evaluates afterwards.
+  function bindPendingConfirm(shadow) {
+    const button = shadow.getElementById("bf-confirm-pending");
+    if (!button) return;
+    button.addEventListener("click", async () => {
+      if (button.disabled) return;
+      const original = button.textContent || "确认开启";
+      button.disabled = true;
+      button.textContent = "正在开启…";
+      const result = await sendMessage({ type: "confirmPendingFocus" });
+      button.disabled = false;
+      button.textContent = original;
+      if (result?.ok) {
+        await evaluatePage();
+        return;
+      }
+      const note = shadow.getElementById("bf-pending-note");
+      if (note) note.textContent = result?.error || "开启失败，请稍后重试";
+    });
   }
 
   function styles(theme) {
@@ -440,41 +732,47 @@
       .eyebrow{margin:0 0 9px;color:var(--bf-accent-strong);font-size:13px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
       h1{margin:0;color:var(--bf-text);font-size:28px;line-height:1.25;letter-spacing:-.03em}
       .sub{max-width:420px;margin:15px auto 20px;color:var(--bf-muted);font-size:15px;line-height:1.75}
+      .note{max-width:420px;margin:-8px auto 0;color:var(--bf-faint);font-size:13px;line-height:1.7}
       .clock{font-variant-numeric:tabular-nums;font-size:48px;font-weight:760;line-height:1;color:var(--bf-text);letter-spacing:-.04em}
       .chips{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;margin:22px auto 0}.chips span{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 11px;border:1px solid var(--bf-border);border-radius:999px;background:var(--bf-surface-alt);color:var(--bf-muted);font-size:12px}
       .actions{display:flex;justify-content:center;gap:10px;margin-top:26px}
       button{appearance:none;border:0;border-radius:12px;padding:11px 18px;background:linear-gradient(135deg,var(--bf-primary),var(--bf-primary-strong));color:var(--bf-on-primary);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px var(--bf-primary-shadow);transition:.16s transform,.16s filter}
       button:hover{transform:translateY(-1px);filter:brightness(1.04)}
       button:focus-visible{outline:2px solid var(--bf-accent);outline-offset:2px}
+      button:disabled{opacity:.55;cursor:default;transform:none;filter:none}
       button.secondary{background:var(--bf-surface-alt);color:var(--bf-text-soft);box-shadow:none}
+      /* Batch 32: the blocked-pending card has three actions. At 390px the old
+         card/button padding wrapped the labels onto two lines, so this card gets
+         a tighter layout on narrow viewports only. Desktop keeps the old sizes. */
+      @media (max-width:460px){
+        .card-pending-blocked{padding-left:28px;padding-right:28px}
+        .card-pending-blocked .actions{gap:8px;flex-wrap:nowrap}
+        .card-pending-blocked button{padding:10px 11px;font-size:13px;white-space:nowrap}
+      }
     </style>`;
   }
 
   function sendMessage(message) {
     return new Promise((resolve) => {
       let settled = false;
-      const finish = (response, failed = false) => {
+      const finish = (response) => {
         if (settled) return;
         settled = true;
         clearTimeout(watchdog);
-        if (failed) {
-          clearCommentMask();
-          allowPage();
-        }
         resolve(response);
       };
       const timeout = message?.type === "resolvePageInfo" ? 12000 : 3500;
-      const watchdog = setTimeout(() => finish(null, true), timeout);
+      const watchdog = setTimeout(() => finish(null), timeout);
       try {
         chrome.runtime.sendMessage(message, (response) => {
           if (chrome.runtime.lastError) {
-            finish(null, true);
+            finish(null);
           } else {
             finish(response);
           }
         });
       } catch (_error) {
-        finish(null, true);
+        finish(null);
       }
     });
   }

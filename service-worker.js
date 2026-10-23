@@ -99,6 +99,14 @@ async function handleContextMenuClick(info, tab) {
   const isCollection = info.menuItemId === CONTEXT_MENU_COLLECTION;
   if ((!isUpper && !isCollection) || !tab?.id) return;
 
+  // 严格模式进行中禁止通过右键菜单绕过面板锁定修改白名单。
+  const stored = await chrome.storage.local.get(STATE_KEY);
+  const state = BiliFocus.cleanState(stored[STATE_KEY]);
+  if (state.active && state.strict) {
+    await showAllowlistToast(tab.id, "严格模式下不能修改白名单", true);
+    return;
+  }
+
   const message = { type: isUpper ? "EXTRACT_UPPER" : "EXTRACT_COLLECTION" };
   let result = null;
   try {
@@ -324,6 +332,8 @@ async function handleMessage(message, sender) {
       return ackTodoReminders();
     case "skipBreak":
       return skipBreak();
+    case "confirmPendingFocus":
+      return confirmPendingFocus();
     case "continueFocus":
       return continueFocus();
     case "resolveCreator":
@@ -342,6 +352,45 @@ async function handleMessage(message, sender) {
   }
 }
 
+// Batch 20: `focusState.commentMode === "always"` is the retired batch 16
+// switch. Fold it into the three appearance booleans and park the old field at
+// "off" so the very same read never migrates twice. Returns null when there is
+// nothing to do.
+function foldLegacyPureMode(state, appearance) {
+  if (!state || state.commentMode !== "always") return null;
+  return {
+    state: { ...state, commentMode: "off" },
+    appearance: BiliFocus.cleanAppearance({
+      ...BiliFocus.cleanAppearance(appearance),
+      hideComments: true,
+      hideRecommend: true,
+      hideAds: true
+    })
+  };
+}
+
+// Persist the folded values under the state lock: focusState is shared with
+// start / stop / break, so an unlocked read-modify-write could roll one back.
+// Re-reads inside the lock in case another tab already ran the migration.
+async function persistLegacyPureMode(state, appearance) {
+  return withStateLock(async () => {
+    const stored = await chrome.storage.local.get([STATE_KEY, APPEARANCE_KEY]);
+    const latestState = BiliFocus.cleanState(stored[STATE_KEY]);
+    const folded = foldLegacyPureMode(latestState, stored[APPEARANCE_KEY]);
+    if (!folded) {
+      return {
+        state: latestState,
+        appearance: BiliFocus.cleanAppearance(stored[APPEARANCE_KEY])
+      };
+    }
+    await chrome.storage.local.set({
+      [STATE_KEY]: folded.state,
+      [APPEARANCE_KEY]: folded.appearance
+    });
+    return folded;
+  });
+}
+
 async function getData() {
   await finishIfExpired();
   const stored = await chrome.storage.local.get([
@@ -353,7 +402,16 @@ async function getData() {
     SESSIONS_KEY,
     TODOS_KEY
   ]);
-  const state = BiliFocus.cleanState(stored[STATE_KEY]);
+  let state = BiliFocus.cleanState(stored[STATE_KEY]);
+  let appearance =
+    stored[APPEARANCE_KEY] && typeof stored[APPEARANCE_KEY] === "object"
+      ? stored[APPEARANCE_KEY]
+      : null;
+  if (foldLegacyPureMode(state, appearance)) {
+    const migrated = await persistLegacyPureMode(state, appearance);
+    state = migrated.state;
+    appearance = migrated.appearance;
+  }
   const timerConfig = await ensureTimerConfig(state, stored[TIMER_CONFIG_KEY]);
   const sessions = BiliFocus.cleanSessions(stored[SESSIONS_KEY]);
   const todos = BiliFocus.cleanTodos(stored[TODOS_KEY]);
@@ -367,10 +425,8 @@ async function getData() {
     allowlist: BiliFocus.cleanAllowlist(stored[ALLOWLIST_KEY]),
     // Hand back the raw object so the popup can spot an unknown theme id and
     // repair it; every caller runs its own cleaner before using the values.
-    appearance:
-      stored[APPEARANCE_KEY] && typeof stored[APPEARANCE_KEY] === "object"
-        ? stored[APPEARANCE_KEY]
-        : null,
+    // Only a legacy migration replaces it with the cleaned, folded object.
+    appearance,
     schedules: BiliFocus.cleanSchedules(stored[SCHEDULES_KEY]),
     // The popup only needs the latest handful for its first paint; the calendar
     // asks for a specific month through getSessions.
@@ -493,6 +549,8 @@ async function startFocusInner(message) {
     cycles: 0,
     sessionId: makeSessionId(),
     taskId: task ? task.id : "",
+    // Batch 31: a manual start is not owned by any plan.
+    scheduleId: "",
     breakEndPopup: config.breakEndPopup,
     breakSkippable: config.breakSkippable,
     strict,
@@ -554,7 +612,12 @@ function finishState(state, now, reason, focusMsToAdd) {
     sessionFocusMs: Math.max(0, state.sessionFocusMs + Math.max(0, focusMsToAdd)),
     endedAt: now,
     endReason: reason,
-    breakEndedAt: 0
+    breakEndedAt: 0,
+    // Batch 30: ending (or dismissing) a plan before confirming must not leave
+    // a dangling pending lock / plan id behind.
+    pendingPlan: false,
+    pendingPlanId: "",
+    scheduleWindowEndAt: 0
   };
 }
 
@@ -567,6 +630,11 @@ function buildSessionRecord(state, taskTitle = "") {
   if (!startedAt) return null;
   const mode = state.mode === "countup" ? "countup" : "countdown";
   const id = String(state.sessionId || `legacy-${startedAt}`).slice(0, 64);
+  // Batch 32 (D1): a confirmed plan stores the exact window remainder. Prefer it
+  // over the whole-minute state so records and the dashboard do not overstate
+  // the planned duration.
+  const windowRemainingMs = Math.max(0, Math.round(Number(state.windowRemainingMs) || 0));
+  const plannedSource = windowRemainingMs > 0 ? windowRemainingMs / 60000 : Number(state.totalFocusMinutes) || 0;
   const record = {
     id,
     dateKey: BiliFocus.dateKey(new Date(startedAt)),
@@ -578,13 +646,14 @@ function buildSessionRecord(state, taskTitle = "") {
     taskId: String(state.taskId || "").slice(0, 64),
     taskTitle: String(taskTitle || state.taskTitle || "").trim().slice(0, 80),
     plannedMinutes:
-      mode === "countup"
-        ? 0
-        : Math.min(480, Math.max(0, Math.round(Number(state.totalFocusMinutes) || 0))),
+      mode === "countup" ? 0 : Math.min(480, Math.max(1, Math.floor(plannedSource))),
     completed: state.endReason === "completed",
     endReason: state.endReason,
     cycles: Math.min(9999, Math.max(0, Math.floor(Number(state.cycles) || 0)))
   };
+  if (windowRemainingMs > 0 && mode === "countdown") {
+    record.windowRemainingMs = windowRemainingMs;
+  }
   if (state.scheduleId) record.scheduleId = String(state.scheduleId).slice(0, 64);
   return record;
 }
@@ -695,10 +764,15 @@ async function advanceFromBreak(state) {
 }
 
 async function saveCommentMode(value) {
-  const stored = await chrome.storage.local.get(STATE_KEY);
-  const state = BiliFocus.cleanState(stored[STATE_KEY]);
-  const next = { ...state, commentMode: BiliFocus.cleanCommentMode(value) };
-  await chrome.storage.local.set({ [STATE_KEY]: next });
+  // Same lock as start/stop: this is a read-modify-write of focusState, so an
+  // unlocked write could roll back a phase change that landed in between.
+  const next = await withStateLock(async () => {
+    const stored = await chrome.storage.local.get(STATE_KEY);
+    const state = BiliFocus.cleanState(stored[STATE_KEY]);
+    const updated = { ...state, commentMode: BiliFocus.cleanCommentMode(value) };
+    await chrome.storage.local.set({ [STATE_KEY]: updated });
+    return updated;
+  });
   await ensureGuardsOnOpenTabs();
   return { ok: true, state: next };
 }
@@ -717,11 +791,22 @@ async function saveAllowlist(value) {
 }
 
 async function saveAppearance(value) {
-  const stored = await chrome.storage.local.get(APPEARANCE_KEY);
-  const current = BiliFocus.cleanAppearance(stored[APPEARANCE_KEY]);
   const patch = value && typeof value === "object" ? value : {};
-  const appearance = BiliFocus.cleanAppearance({ ...current, ...patch });
-  await chrome.storage.local.set({ [APPEARANCE_KEY]: appearance });
+  // Appearance saves also touch focusState when the legacy commentMode still
+  // needs folding, hence the same lock the timer transitions use.
+  const appearance = await withStateLock(async () => {
+    const stored = await chrome.storage.local.get([STATE_KEY, APPEARANCE_KEY]);
+    const current = BiliFocus.cleanAppearance(stored[APPEARANCE_KEY]);
+    const folded = foldLegacyPureMode(BiliFocus.cleanState(stored[STATE_KEY]), current);
+    const next = BiliFocus.cleanAppearance({
+      ...(folded ? folded.appearance : current),
+      ...patch
+    });
+    const updates = { [APPEARANCE_KEY]: next };
+    if (folded) updates[STATE_KEY] = folded.state;
+    await chrome.storage.local.set(updates);
+    return next;
+  });
   return { ok: true, appearance };
 }
 
@@ -737,8 +822,29 @@ async function saveSchedules(value) {
     [SCHEDULES_KEY]: schedules,
     [SCHEDULE_STATE_KEY]: scheduleState
   });
+  // Batch 31 (遗留③): the pending lock points at one plan. If that plan is
+  // deleted or disabled while it is still pending, release the lock right away
+  // instead of leaving pages blocked until the old scheduleWindowEndAt.
+  await releasePendingIfPlanGone(schedules);
   await ensureScheduleTicker();
   return { ok: true, schedules };
+}
+
+// Batch 31: a pending lock has no meaning once its plan is gone. Re-read under
+// the state lock so a concurrent confirm / expiry cannot be overwritten.
+async function releasePendingIfPlanGone(schedules) {
+  return withStateLock(async () => {
+    const stored = await chrome.storage.local.get(STATE_KEY);
+    const state = BiliFocus.cleanState(stored[STATE_KEY]);
+    if (!state.active || !state.pendingPlan) return { released: false };
+    const plan = schedules.find((schedule) => schedule.id === state.pendingPlanId);
+    if (plan && plan.enabled) return { released: false };
+    const next = cancelPendingState(state);
+    await commitState(next);
+    await syncRuntime(next);
+    kickGuards();
+    return { released: true, state: next };
+  });
 }
 
 async function saveTodos(value) {
@@ -872,15 +978,10 @@ async function runSchedulesInner() {
   const scheduleState = BiliFocus.cleanScheduleState(stored[SCHEDULE_STATE_KEY]);
 
   if (state.active) {
+    if (state.pendingPlan) return { ok: true, started: false, reason: "pending" };
     if (!state.auto) return { ok: true, started: false, reason: "manual-active" };
-    let changed = false;
-    active.forEach((entry) => {
-      if (scheduleState.lastKeys[entry.schedule.id] !== entry.window.key) {
-        scheduleState.lastKeys[entry.schedule.id] = entry.window.key;
-        changed = true;
-      }
-    });
-    if (changed) await chrome.storage.local.set({ [SCHEDULE_STATE_KEY]: scheduleState });
+    // Do not mark the other overlapping windows as run: only the plan we really
+    // started owns a window key, the rest stay eligible after this session.
     return { ok: true, started: false };
   }
 
@@ -901,15 +1002,92 @@ async function runSchedulesInner() {
 
   const chosen = fresh[0];
   const nowMs = Date.now();
-  const endAt = Math.min(chosen.window.endAt, nowMs + 240 * 60000);
-  const minutes = Math.max(1, Math.min(240, Math.round((endAt - nowMs) / 60000)));
+  const windowEndAt = chosen.window.endAt;
+  // Batch 30: reaching the plan start no longer opens a session by itself — the
+  // browser may well be closed / idle at that moment, and the old behaviour
+  // produced fake records. Park the plan as pending instead: the guard is armed
+  // (active + auto) but nothing is counting and nothing is recorded until the
+  // user confirms. startedAt / sessionId stay empty so no focusSessions row can
+  // ever be built from this state.
+  const plannedMinutes = Math.max(1, Math.min(240, Math.round((windowEndAt - nowMs) / 60000)));
   const next = {
     active: true,
     mode: "countdown",
     phase: "focus",
-    startedAt: nowMs,
-    phaseStartedAt: nowMs,
+    startedAt: 0,
+    phaseStartedAt: 0,
+    endAt: 0,
+    durationMinutes: plannedMinutes,
+    focusMinutes: plannedMinutes,
+    totalFocusMinutes: plannedMinutes,
+    breakMinutes: 0,
+    sessionFocusMs: 0,
+    cycles: 0,
+    sessionId: "",
+    taskId: "",
+    breakEndPopup: false,
+    breakSkippable: true,
+    strict: chosen.schedule.strict !== false,
+    commentMode: state.commentMode,
+    auto: true,
+    pendingPlan: true,
+    pendingPlanId: chosen.schedule.id,
+    scheduleWindowEndAt: windowEndAt
+  };
+
+  // Mark only the plan that actually fired. Overlapping plans keep their key so
+  // the next one can run once this session ends instead of being swallowed.
+  // The key is also written while pending: an ignored plan must not re-arm
+  // itself every tick until its window closes.
+  scheduleState.lastKeys[chosen.schedule.id] = chosen.window.key;
+  await chrome.storage.local.set({
+    [STATE_KEY]: next,
+    [SCHEDULE_STATE_KEY]: scheduleState
+  });
+  await syncRuntime(next);
+  kickGuards();
+  return { ok: true, started: true, pending: true, state: next };
+}
+
+// Batch 30: the user confirmed the pending plan. This is the moment a real
+// session starts: sessionId + startedAt are generated here, and only from here
+// on can records be produced.
+async function confirmPendingFocus() {
+  await finishIfExpired();
+  return withStateLock(confirmPendingFocusInner);
+}
+
+async function confirmPendingFocusInner() {
+  const stored = await chrome.storage.local.get(STATE_KEY);
+  const state = BiliFocus.cleanState(stored[STATE_KEY]);
+  if (!state.active || !state.pendingPlan) {
+    return { ok: false, error: "没有待确认的计划专注" };
+  }
+
+  const now = Date.now();
+  const windowEndAt = Number(state.scheduleWindowEndAt) || 0;
+  if (!windowEndAt || windowEndAt <= now) {
+    // The plan window closed before the confirmation: drop the lock, keep the
+    // record list untouched.
+    await commitState(cancelPendingState(state));
+    return { ok: false, error: "计划专注时间已结束" };
+  }
+
+  const endAt = Math.min(windowEndAt, now + 240 * 60000);
+  // Batch 32 (D1): keep the exact window remainder for the record. Rounding it
+  // to whole minutes made a 29.4-minute window look like 29 or 30 minutes and
+  // let the popup clock reach 00:00 before the window actually closed.
+  const windowRemainingMs = Math.max(0, endAt - now);
+  const minutes = Math.max(1, Math.min(240, Math.floor(windowRemainingMs / 60000)));
+  const next = {
+    ...state,
+    active: true,
+    mode: "countdown",
+    phase: "focus",
+    startedAt: now,
+    phaseStartedAt: now,
     endAt,
+    windowRemainingMs,
     durationMinutes: minutes,
     focusMinutes: minutes,
     totalFocusMinutes: minutes,
@@ -918,23 +1096,42 @@ async function runSchedulesInner() {
     cycles: 0,
     sessionId: makeSessionId(),
     taskId: "",
+    // Batch 31: the confirmed session belongs to the pending plan, so the
+    // record can point back at it after the pending fields are cleared below.
+    scheduleId: state.pendingPlanId,
     breakEndPopup: false,
     breakSkippable: true,
-    strict: chosen.schedule.strict !== false,
-    commentMode: state.commentMode,
+    pendingPlan: false,
+    pendingPlanId: "",
+    scheduleWindowEndAt: 0,
     auto: true
   };
+  await commitState(next);
+  return { ok: true, state: next };
+}
 
-  active.forEach((entry) => {
-    scheduleState.lastKeys[entry.schedule.id] = entry.window.key;
-  });
-  await chrome.storage.local.set({
-    [STATE_KEY]: next,
-    [SCHEDULE_STATE_KEY]: scheduleState
-  });
-  await syncRuntime(next);
-  kickGuards();
-  return { ok: true, started: true, state: next };
+// Drop a pending lock without recording anything. Used when the plan window
+// closed before the user confirmed.
+function cancelPendingState(state) {
+  return {
+    ...state,
+    active: false,
+    phase: "focus",
+    endAt: 0,
+    startedAt: 0,
+    phaseStartedAt: 0,
+    sessionFocusMs: 0,
+    cycles: 0,
+    sessionId: "",
+    scheduleId: "",
+    windowRemainingMs: 0,
+    endedAt: 0,
+    endReason: undefined,
+    breakEndedAt: 0,
+    pendingPlan: false,
+    pendingPlanId: "",
+    scheduleWindowEndAt: 0
+  };
 }
 
 function finishIfExpired() {
@@ -945,6 +1142,15 @@ async function finishIfExpiredInner() {
   const stored = await chrome.storage.local.get(STATE_KEY);
   const state = BiliFocus.cleanState(stored[STATE_KEY]);
   if (!state.active) return { ok: true, expired: false, state };
+  // Batch 30: a pending plan is only a lock. It expires when its window closes
+  // (or immediately when the window end is missing), and it never records.
+  if (state.pendingPlan) {
+    const windowEndAt = Number(state.scheduleWindowEndAt) || 0;
+    if (windowEndAt > Date.now()) return { ok: true, expired: false, state };
+    const next = cancelPendingState(state);
+    await commitState(next);
+    return { ok: true, expired: true, state: next, phase: "pending-expired" };
+  }
   if (state.mode === "countup" || state.phase === "breakEnded") {
     return { ok: true, expired: false, state };
   }
@@ -1050,7 +1256,8 @@ async function setPhaseAlarm(state) {
 async function ensureBadgeTicker(state) {
   // Countdown and break need a per-minute refresh too, not just countup:
   // otherwise the badge keeps showing the minutes it had when the phase began.
-  if (state.active && state.phase !== "breakEnded") {
+  // A pending plan has no countdown to refresh, so it needs no ticker either.
+  if (state.active && state.phase !== "breakEnded" && !state.pendingPlan) {
     const existing = await chrome.alarms.get(BADGE_ALARM);
     if (!existing || existing.periodInMinutes !== 1) {
       chrome.alarms.create(BADGE_ALARM, { periodInMinutes: 1 });
@@ -1070,7 +1277,13 @@ async function updateBadge(state, appearance) {
     BiliFocus.cleanAppearance((await chrome.storage.local.get(APPEARANCE_KEY))[APPEARANCE_KEY]);
   const theme = BiliFocus.themeById(current.theme);
   let text;
-  if (state.mode === "countup") {
+  if (state.pendingPlan) {
+    // Batch 31: Chromium paints badge text with a single default font and
+    // clips it to the badge, so three CJK glyphs ("待确认") can come out blank
+    // or cut off. Use an ASCII mark; "?" also keeps it distinct from the
+    // todo-reminder "!" badge.
+    text = "?";
+  } else if (state.mode === "countup") {
     const elapsedMinutes = Math.floor(BiliFocus.elapsedMs(state) / 60000);
     text = elapsedMinutes > 99 ? "99+" : `${elapsedMinutes}m`;
   } else if (state.phase === "breakEnded") {

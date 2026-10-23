@@ -1710,7 +1710,7 @@
     const clone = document.documentElement.cloneNode(true);
     clone.querySelectorAll("script").forEach((node) => node.remove());
     clone.querySelectorAll('link[rel="stylesheet"]').forEach((node) => node.remove());
-    clone.querySelectorAll(".export-fab, .chart-tooltip").forEach((node) => node.remove());
+    clone.querySelectorAll(".export-fab, .chart-tooltip, #export-hint").forEach((node) => node.remove());
     clone.querySelectorAll(".tilt").forEach((node) => {
       node.style.transform = "";
     });
@@ -1765,6 +1765,74 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
+  // 批次 34：导出失败不再用 window.alert，改成页面内浮层提示（4.6 秒自动消失，
+  // 点一下也能立刻关掉）。节点按需创建、样式全内联，不新增/改动任何 CSS 文件，
+  // 也不进入导出的 HTML 快照。
+  let exportHintTimer = 0;
+
+  function hideExportHint() {
+    window.clearTimeout(exportHintTimer);
+    const hint = document.getElementById("export-hint");
+    if (!hint) return;
+    if (isReducedMotion()) {
+      hint.hidden = true;
+      return;
+    }
+    hint.style.opacity = "0";
+    window.setTimeout(() => {
+      // 期间又被 showExportHint 叫醒时不要把它藏掉。
+      if (hint.style.opacity === "0") hint.hidden = true;
+    }, 200);
+  }
+
+  function showExportHint(message) {
+    let hint = document.getElementById("export-hint");
+    if (!hint) {
+      hint = document.createElement("div");
+      hint.id = "export-hint";
+      hint.className = "export-hint";
+      hint.hidden = true;
+      hint.setAttribute("role", "alert");
+      hint.setAttribute("aria-live", "assertive");
+      hint.style.cssText = [
+        "position:fixed",
+        "left:50%",
+        "bottom:26px",
+        "z-index:120",
+        "max-width:min(74vw,420px)",
+        "padding:9px 14px",
+        "border:1px solid var(--bf-danger)",
+        "border-radius:10px",
+        "background:var(--bf-surface-solid)",
+        "box-shadow:0 14px 34px var(--bf-shadow)",
+        "color:var(--bf-text)",
+        "font-size:12px",
+        "line-height:1.5",
+        "text-align:center",
+        "cursor:pointer",
+        "transform:translateX(-50%)",
+        "transition:opacity 0.18s ease"
+      ].join(";");
+      hint.addEventListener("click", hideExportHint);
+      document.body.append(hint);
+    }
+    hint.textContent = message;
+    hint.hidden = false;
+    if (isReducedMotion()) {
+      hint.style.opacity = "1";
+    } else {
+      hint.style.opacity = "0";
+      requestAnimationFrame(() => {
+        if (hint) hint.style.opacity = "1";
+      });
+    }
+    window.clearTimeout(exportHintTimer);
+    exportHintTimer = window.setTimeout(hideExportHint, 4600);
+  }
+
+  // 导出 PDF 会走 window.print()，打印前先把浮层收掉，免得印在纸面上。
+  window.addEventListener("beforeprint", hideExportHint);
+
   async function exportHtmlSnapshot() {
     if (!dom.exportHtmlBtn) return;
     const label = dom.exportHtmlBtn.textContent;
@@ -1780,7 +1848,8 @@
       downloadHtml(`${EXPORT_FILE_PREFIX}${todayStamp()}.html`, html);
     } catch (error) {
       console.error("[dashboard] 导出 HTML 失败", error);
-      window.alert(`导出失败：${error && error.message ? error.message : "未知错误"}`);
+      const detail = error && error.message ? error.message : "未知错误";
+      showExportHint(`导出失败：${detail}`);
     } finally {
       dom.exportHtmlBtn.disabled = false;
       dom.exportHtmlBtn.textContent = label;
